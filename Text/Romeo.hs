@@ -12,6 +12,7 @@ module Text.Romeo
     , romeo
     , romeoFile
     , romeoFileDebug
+    , readUtf8File
     ) where
 
 import Text.ParserCombinators.Parsec hiding (Line)
@@ -23,8 +24,9 @@ import Data.Monoid
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.Text as TS
 import qualified Data.Text.Lazy as TL
-import Text.Hamlet.Quasi (readUtf8File)
 import Text.Shakespeare
+import qualified System.IO as SIO
+import qualified Data.Text.Lazy.IO as TIO
 
 -- move to Shakespeare?
 readFileQ :: FilePath -> Q [Char]
@@ -204,3 +206,9 @@ romeoRuntime rs fp cd render' = unsafePerformIO $ do
         case lookup d cd of
             Just (EMixin m) -> m render'
             _ -> error $ show d ++ ": expected EMixin"
+
+readUtf8File :: FilePath -> IO TL.Text
+readUtf8File fp = do
+    h <- SIO.openFile fp SIO.ReadMode
+    SIO.hSetEncoding h SIO.utf8_bom
+    TIO.hGetContents h

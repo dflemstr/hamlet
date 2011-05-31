@@ -1,3 +1,0 @@
-$forall _ <- list
-$forall l <- list
-    #{l}

@@ -134,7 +134,7 @@ contentToExp env hr scope (ContentUrl hasParams d) =
                     then [|\(u, p) -> $(render') u p|]
                     else [|\u -> $(render') u []|]
             let d' = derefToExp scope d
-            pet <- [|preEscapedText|]
+            pet <- [|toHtml|]
             return $ hrFromHtml hr `AppE` (pet `AppE` (ou `AppE` d'))
 contentToExp env hr scope (ContentEmbed d) = hrEmbed hr env $ derefToExp scope d
 contentToExp env hr scope (ContentMsg d) =

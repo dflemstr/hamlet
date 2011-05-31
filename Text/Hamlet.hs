@@ -1,30 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Text.Hamlet
-    ( -- * Basic quasiquoters
-      hamlet
-    , xhamlet
-    , hamletDebug
-      -- * Load from external file
-    , hamletFile
-    , xhamletFile
-    , hamletFileDebug
-      -- * Customized settings
-    , hamletWithSettings
-    , hamletFileWithSettings
-    , HamletSettings (..)
-    , defaultHamletSettings
-    , xhtmlHamletSettings
-      -- * Datatypes
-    , Html
-    , Hamlet
-      -- * Typeclass
-    , HamletValue (..)
-      -- * Construction
-    , preEscapedString
+    ( -- * Construction
+      preEscapedString
     , preEscapedText
     , preEscapedLazyText
-    , string
-    , unsafeByteString
     , cdata
     , toHtml
       -- * Rendering
@@ -34,18 +13,16 @@ module Text.Hamlet
       -- ** Text
     , renderHamletText
     , renderHtmlText
-      -- * Runtime Hamlet
-    , HamletRT
-    , HamletData (..)
-    , HamletException (..)
-    , parseHamletRT
-    , renderHamletRT
+      -- * Hamlet
+    , module Text.Hamlet.NonPoly
     ) where
 
+import Text.Hamlet.NonPoly
+    ( Html, html, htmlFile
+    , Hamlet, hamlet, hamletFile
+    , IHamlet, ihamlet, ihamletFile
+    )
 import Text.Hamlet.Parse
-import Text.Hamlet.Quasi
-import Text.Hamlet.RT
-import Text.Hamlet.Debug
 import qualified Data.ByteString.Lazy as L
 import Data.Monoid (mappend)
 import qualified Data.Text.Lazy as T

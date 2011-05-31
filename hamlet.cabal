@@ -46,7 +46,6 @@ library
                    , process          >= 1.0     && < 1.1
     exposed-modules: Text.Hamlet
                      Text.Hamlet.NonPoly
-                     Text.Hamlet.RT
                      Text.Cassius
                      Text.Lucius
                      Text.Julius

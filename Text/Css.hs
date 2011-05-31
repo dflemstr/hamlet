@@ -11,7 +11,7 @@ import Data.Monoid (mconcat, mappend, mempty)
 import Data.Text (Text, pack)
 import Language.Haskell.TH.Syntax
 import System.IO.Unsafe (unsafePerformIO)
-import Text.Hamlet.Quasi (readUtf8File)
+import Text.Romeo (readUtf8File)
 import Text.ParserCombinators.Parsec (Parser, parse)
 import Text.Shakespeare
 import Language.Haskell.TH
