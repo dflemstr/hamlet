@@ -40,6 +40,12 @@ library
                      Text.Lucius
     other-modules:   Text.MkSizeType
                      Text.Css
+                     Text.Css.Ast
+                     Text.Css.Macro
+                     Text.Css.Parser
+                     Text.Css.Render
+                     Text.Css.Token
+                     Text.Css.Util
     ghc-options:     -Wall
 
 test-suite test
