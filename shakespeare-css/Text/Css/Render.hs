@@ -4,14 +4,12 @@ module Text.Css.Render where
 import Data.Bits
 import Data.List (intersperse)
 import Data.Monoid
-import qualified Data.Text.Lazy as Text
-import Data.Text.Lazy.Builder (Builder)
-import qualified Data.Text.Lazy.Builder as Builder
+import Data.String
 
 import Text.Css.Ast
 
 class CssValue a where
-  renderCss :: a -> Builder
+  renderCss :: (IsString b, Monoid b) => a -> b
 
 instance CssValue Stylesheet where
   renderCss = concatMapB renderCss . stylesheetStatements
@@ -165,8 +163,8 @@ instance CssValue Color where
       reduce ((r1, r2), (g1, g2), (b1, b2))
         | r1 == r2 &&
           g1 == g2 &&
-          b1 == b2  = concatMapB Builder.singleton [r1, g1, b1]
-        | otherwise = concatMapB Builder.singleton [r1, r2, g1, g2, b1, b2]
+          b1 == b2  = concatMapB (str . return) [r1, g1, b1]
+        | otherwise = concatMapB (str . return) [r1, r2, g1, g2, b1, b2]
       show8bit = str . show . to8bit
       to8bit :: (RealFrac a) => a -> Int
       to8bit = (* 255) . round . clamp 0 1
@@ -203,7 +201,7 @@ instance CssValue FreqUnit where
   renderCss FreqHerz = "hz"
   renderCss FreqKiloHerz = "khz"
 
-renderDouble :: Double -> Builder
+renderDouble :: (IsString a) => Double -> a
 renderDouble d =
   if roundedD == d
   then str . show $ rounded
@@ -212,38 +210,38 @@ renderDouble d =
     rounded = round d :: Integer
     roundedD = fromIntegral rounded
 
-renderString :: String -> Builder
+renderString :: (IsString a, Monoid a) => String -> a
 renderString =
   (<>"\"") . ("\""<>) . concatMapB addQuotes
   where
     addQuotes '"' = str "\\\""
-    addQuotes x = Builder.singleton x
+    addQuotes x = str [x]
 
-renderIdent :: String -> Builder
+renderIdent :: (IsString a) => String -> a
 renderIdent =
   str
   -- TODO escape chars that are not ("a-zA-Z_0-9-" or non-ascii),
   -- and escape "0-9-" in the beginning
 
-unwordsB :: [Builder] -> Builder
+unwordsB :: (IsString a, Monoid a) => [a] -> a
 unwordsB [] = ""
 unwordsB ws = foldr1 (\ w s -> w <> " " <> s) ws
 
-intercalateB :: Builder -> [Builder] -> Builder
+intercalateB :: (IsString a, Monoid a) => a -> [a] -> a
 intercalateB b = concatB . intersperse b
 
-concatB :: [Builder] -> Builder
+concatB :: (IsString a, Monoid a) => [a] -> a
 concatB = foldr (<>) ""
 
-concatMapB :: (a -> Builder) -> [a] -> Builder
+concatMapB :: (IsString b, Monoid b) => (a -> b) -> [a] -> b
 concatMapB f = concatB . map f
 
-strL :: [String] -> [Builder]
+strL :: (IsString a) => [String] -> [a]
 strL = map str
 
-str :: String -> Builder
-str = Builder.fromLazyText . Text.pack
+str :: (IsString a) => String -> a
+str = fromString
 
-(<>) :: Monoid a => a -> a -> a
+(<>) :: (Monoid a) => a -> a -> a
 (<>) = mappend
-infixr 4 <>
+infixr 4 <> -- D.T.L.Builder is right-assoc optimized, etc
