@@ -1,84 +1,89 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Text.Css.Render where
 
-import Data.List
-import Data.Maybe
-
-import Numeric (showHex)
+import Data.Bits
+import Data.List (intersperse)
+import Data.Monoid
+import qualified Data.Text.Lazy as Text
+import Data.Text.Lazy.Builder (Builder)
+import qualified Data.Text.Lazy.Builder as Builder
 
 import Text.Css.Ast
 
 class CssValue a where
-  renderCss :: a -> String
+  renderCss :: a -> Builder
 
 instance CssValue Stylesheet where
-  renderCss = concatMap renderCss . stylesheetStatements
+  renderCss = concatMapB renderCss . stylesheetStatements
 
 instance CssValue Statement where
   renderCss (ImportStatement url queries) =
-    "@import url(" ++ url ++ ")" ++
-    (if null queries then "" else (" " ++ unwords queries))
-    ++ ";"
+    "@import url(" <> str url <> ")" <>
+    (if null queries then "" else (" " <> unwordsB (strL queries)))
+    <> ";"
   renderCss (MediaStatement types rules) =
-    "@media " ++ intercalate "," types ++ "{" ++
-    concatMap renderCss rules ++ "}"
+    "@media " <> intercalateB "," (strL types) <> "{" <>
+    concatMapB renderCss rules <> "}"
   renderCss (PageStatement name decls) =
-    "@page " ++ maybe "" (":" ++) name ++ "{" ++
-    concatMap renderCss decls ++ "}"
+    "@page " <> maybe "" ((":" <>) . str) name <> "{" <>
+    concatMapB renderCss decls <> "}"
   renderCss (RulesetStatement rs) =
     renderCss rs
   renderCss (AtRuleStatement name decls) =
-    '@' : name ++ "{" ++
-    concatMap renderCss decls ++ "}"
+    "@" <> str name <> "{" <>
+    concatMapB renderCss decls <> "}"
 
 instance CssValue Ruleset where
   renderCss (Ruleset sel decls) =
-    (unwords . map renderCss $ sel) ++ "{" ++
-    (concatMap renderCss $ decls) ++ "}"
+    (unwordsB . map renderCss $ sel) <> "{" <>
+    (concatMapB renderCss $ decls) <> "}"
   renderCss (MixinDefExt sel args decls) =
-    renderCss sel ++ "(" ++ concatMap renderCss args ++
-    "){" ++ concatMap renderCss decls ++ "}"
+    renderCss sel <> "(" <> concatMapB renderCss args <>
+    "){" <> concatMapB renderCss decls <> "}"
   renderCss (VarDeclStatementExt name term) =
-    '@' : name ++ ":" ++ renderCss term ++ ";"
+    "@" <> str name <> ":" <> renderCss term <> ";"
 
 instance CssValue MixinArgument where
   renderCss (MixinArgument name value) =
-    name ++ ":" ++ renderCss value
+    str name <> ":" <> renderCss value
 
 instance CssValue Declaration where
   renderCss (PropertyDeclaration name expr prio) =
-    name ++ ":" ++ renderCss expr ++
-    (if prio then "!important" else "") ++ ";"
+    str name <> ":" <> renderCss expr <>
+    (if prio then "!important" else "") <> ";"
   renderCss (RulesetDeclarationExt rs) = renderCss rs
   renderCss (MixinApplicationExt selector) =
-    renderCss selector ++ ";"
+    renderCss selector <> ";"
 
 instance CssValue Selector where
   renderCss =
-    concatMap renderElem . selectorElems
+    concatMapB renderElem . selectorElems
     where
       renderElem (Left sel) = renderCss sel
       renderElem (Right comb) = renderCss comb
 
 instance CssValue SimpleSelector where
   renderCss (SimpleSelector ns name specs) =
-    maybe "" (++"|") ns ++ fromMaybe "" name ++ concatMap renderCss specs
+    maybe "" ((<>"|") . str) ns <> maybe "" str name <>
+    concatMapB renderCss specs
 
 instance CssValue SimpleSelectorSpecifier where
   renderCss (AttributeSelector ns name mOp) =
-    '[' : maybe "" (++"|") ns ++ name ++ maybe "" renderOp mOp ++ "]"
+    "[" <> maybe "" ((<>"|") . str) ns <> str name <>
+    maybe "" renderOp mOp <> "]"
     where
       renderOp (operator, operand) =
-        renderCss operator ++ renderString operand
+        renderCss operator <> renderString operand
   renderCss (ClassSelector name) =
-    '.' : name
+    "." <> str name
   renderCss (IDSelector name) =
-    '#' : name
+    "#" <> str name
   renderCss (PseudoClassSelector name args) =
-    ':' : name ++ (maybe "" (\ a -> '(' : a ++ ")") args)
+    ":" <> str name <> (maybe "" (\ a -> "(" <> str a <> ")") args)
   renderCss (PseudoElementSelector name args) =
-    ':' : ':' : name ++ (maybe "" (\ a -> '(' : a ++ ")") args)
+    "::" <> str name <> (maybe "" (\ a -> "(" <> str a <> ")") args)
   renderCss (NotSelector selector) =
-    ":not(" ++ renderCss selector ++ ")"
+    ":not(" <> renderCss selector <> ")"
   renderCss (SuperblockSelectorExt) =
     "&"
 
@@ -98,7 +103,7 @@ instance CssValue Combinator where
 
 instance CssValue Expression where
   renderCss (Expression elems) =
-    concatMap renderTermExpr elems
+    concatMapB renderTermExpr elems
     where
       renderTermExpr (Left term) = renderCss term
       renderTermExpr (Right op) = renderCss op
@@ -110,41 +115,41 @@ instance CssValue ExprOperator where
 
 instance CssValue Term where
   renderCss (ValueTerm v) = renderCss v
-  renderCss (NegateTerm t) = "-" ++ renderCss t
-  renderCss (AbsTerm t) = "+" ++ renderCss t
+  renderCss (NegateTerm t) = "-" <> renderCss t
+  renderCss (AbsTerm t) = "+" <> renderCss t
   renderCss (FunctionTerm name expr) =
-    name ++ '(' : renderCss expr ++ ")"
+    str name <> "(" <> renderCss expr <> ")"
   renderCss (ParensTermExt term) =
-    '(' : renderCss term ++ ")"
+    "(" <> renderCss term <> ")"
   renderCss (AddTermExt t1 t2) =
-    renderCss t1 ++ "+" ++ renderCss t2
+    renderCss t1 <> "+" <> renderCss t2
   renderCss (SubTermExt t1 t2) =
-    renderCss t1 ++ "-" ++ renderCss t2
+    renderCss t1 <> "-" <> renderCss t2
   renderCss (MulTermExt t1 t2) =
-    renderCss t1 ++ "*" ++ renderCss t2
+    renderCss t1 <> "*" <> renderCss t2
   renderCss (DivTermExt t1 t2) =
-    renderCss t1 ++ "/" ++ renderCss t2
+    renderCss t1 <> "/" <> renderCss t2
 
 instance CssValue Value where
   renderCss (NumberValue d) = renderDouble d
-  renderCss (PercentageValue d) = renderDouble d ++ "%"
-  renderCss (LengthValue unit d) = renderDouble d ++ renderCss unit
-  renderCss (EmsValue d) = renderDouble d ++ "em"
-  renderCss (ExsValue d) = renderDouble d ++ "ex"
-  renderCss (AngleValue unit d) = renderDouble d ++ renderCss unit
-  renderCss (TimeValue unit d) = renderDouble d ++ renderCss unit
-  renderCss (FreqValue unit d) = renderDouble d ++ renderCss unit
-  renderCss (DimensionValue dim d) = renderDouble d ++ dim
-  renderCss (StringValue str) = renderString str
+  renderCss (PercentageValue d) = renderDouble d <> "%"
+  renderCss (LengthValue unit d) = renderDouble d <> renderCss unit
+  renderCss (EmsValue d) = renderDouble d <> "em"
+  renderCss (ExsValue d) = renderDouble d <> "ex"
+  renderCss (AngleValue unit d) = renderDouble d <> renderCss unit
+  renderCss (TimeValue unit d) = renderDouble d <> renderCss unit
+  renderCss (FreqValue unit d) = renderDouble d <> renderCss unit
+  renderCss (DimensionValue dim d) = renderDouble d <> str dim
+  renderCss (StringValue s) = renderString s
   renderCss (IdentValue ident) = renderIdent ident
-  renderCss (UriValue uri) = "uri(" ++ renderString uri ++ ")"
+  renderCss (UriValue uri) = "uri(" <> renderString uri <> ")"
   renderCss (HexcolorValue c) = renderCss c
   renderCss (VariableValueExt v) = renderCss v
-  renderCss (EscapedStringValueExt e) = e
+  renderCss (EscapedStringValueExt e) = str e
 
 instance CssValue Variable where
-  renderCss (PlainVariable name) = '@' : name
-  renderCss (VariableRef var) = '@' : renderCss var
+  renderCss (PlainVariable name) = "@" <> str name
+  renderCss (VariableRef var) = "@" <> renderCss var
 
 instance CssValue Color where
   renderCss (Color rd gd bd ad) =
@@ -152,17 +157,25 @@ instance CssValue Color where
     then renderHash rd gd bd
     else renderRgba rd gd bd ad
     where
-      renderHash r g b = '#' : toHex r ++ toHex g ++ toHex b
-      renderRgba r g b a = "rgba(" ++
-                           show8bit r ++ "," ++ show8bit g ++ "," ++
-                           show8bit b ++ "," ++ show8bit a ++ ")"
-      toHex = pad '0' 2 . flip showHex "" . to8bit
-      show8bit = show . to8bit
+      renderHash r g b = "#" <> reduce (toHex r, toHex g, toHex b)
+      renderRgba r g b a =
+        "rgba(" <>
+        show8bit r <> "," <> show8bit g <> "," <>
+        show8bit b <> "," <> show8bit a <> ")"
+      reduce ((r1, r2), (g1, g2), (b1, b2))
+        | r1 == r2 &&
+          g1 == g2 &&
+          b1 == b2  = concatMapB Builder.singleton [r1, g1, b1]
+        | otherwise = concatMapB Builder.singleton [r1, r2, g1, g2, b1, b2]
+      show8bit = str . show . to8bit
       to8bit :: (RealFrac a) => a -> Int
       to8bit = (* 255) . round . clamp 0 1
-      pad a n xs =
-        let len = length xs
-        in if len < n then replicate (n - len) a ++ xs else xs
+      toHex = (\ x -> (toChar $ shiftR x 4, toChar $ x .&. 15)) . to8bit
+      toChar c
+        | c < 10    = mkChar c 0 '0'
+        | otherwise = mkChar c 10 'a'
+      mkChar a b' c =
+        toEnum $ fromIntegral $ a - b' + fromIntegral (fromEnum c)
       clamp mi ma v
         | v < mi = mi
         | v > ma = ma
@@ -190,23 +203,47 @@ instance CssValue FreqUnit where
   renderCss FreqHerz = "hz"
   renderCss FreqKiloHerz = "khz"
 
-renderDouble :: Double -> String
+renderDouble :: Double -> Builder
 renderDouble d =
   if roundedD == d
-  then show rounded
-  else show d
+  then str . show $ rounded
+  else str . show $ d
   where
     rounded = round d :: Integer
     roundedD = fromIntegral rounded
 
-renderString :: String -> String
+renderString :: String -> Builder
 renderString =
-  (++"\"") . ('"':) . concatMap addQuotes
+  (<>"\"") . ("\""<>) . concatMapB addQuotes
   where
-    addQuotes '"' = "\\\""
-    addQuotes x = [x]
+    addQuotes '"' = str "\\\""
+    addQuotes x = Builder.singleton x
 
-renderIdent :: String -> String
+renderIdent :: String -> Builder
 renderIdent =
-  id -- TODO escape chars that are not ("a-zA-Z_0-9-" or non-ascii),
-     -- and escape "0-9-" in the beginning
+  str
+  -- TODO escape chars that are not ("a-zA-Z_0-9-" or non-ascii),
+  -- and escape "0-9-" in the beginning
+
+unwordsB :: [Builder] -> Builder
+unwordsB [] = ""
+unwordsB ws = foldr1 (\ w s -> w <> " " <> s) ws
+
+intercalateB :: Builder -> [Builder] -> Builder
+intercalateB b = concatB . intersperse b
+
+concatB :: [Builder] -> Builder
+concatB = foldr (<>) ""
+
+concatMapB :: (a -> Builder) -> [a] -> Builder
+concatMapB f = concatB . map f
+
+strL :: [String] -> [Builder]
+strL = map str
+
+str :: String -> Builder
+str = Builder.fromLazyText . Text.pack
+
+(<>) :: Monoid a => a -> a -> a
+(<>) = mappend
+infixr 4 <>
