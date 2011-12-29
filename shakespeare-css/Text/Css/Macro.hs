@@ -131,12 +131,15 @@ badcomment2 =
 
 uri :: Parser String
 uri =
-  try (string "url(" *> w *> string' <* w <* string ")") <|>
-  try (string "url(" *> w *> manyString uriContentElem <* w <* string ")")
+  try (url *> w *> string' <* w <* string ")") <|>
+  try (url *> w *> manyString uriContentElem <* w <* string ")")
   <?> "uri"
   where
     uriContentElem =
       satisfyInClass "!#$%&*-[]-~" <|> nonascii <|> escape
+
+url :: Parser ()
+url = string "url(" *> return ()
 
 baduri :: Parser String
 baduri = try baduri1 <|> try baduri2 <|> try baduri3 <?> "bad uri"

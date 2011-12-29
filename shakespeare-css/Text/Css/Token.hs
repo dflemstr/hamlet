@@ -140,6 +140,9 @@ dimensionToken =
 uriToken :: Parser String
 uriToken = uri <?> "uri"
 
+urlSymToken :: Parser ()
+urlSymToken = url
+
 unicodeRangeToken :: Parser String
 unicodeRangeToken =
   string "u+" <+> takeWhileBetween (inClass "0-9a-fA-F?") 1 6 <+>

@@ -18,6 +18,7 @@ import Data.Maybe
 
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Expr
+import Text.Shakespeare.Base
 
 import Text.Css.Ast
 import Text.Css.Token
@@ -47,7 +48,8 @@ importParser =
   ( do
        importSymToken
        sParser
-       uri <- try stringToken <|> try uriToken <|> fail "Invalid import uri"
+       uri <- try (PlainUri <$> stringToken) <|>
+              try uriParser <|> fail "Invalid import uri"
        sParser
        queries <- queryListParser
        semicolonToken
@@ -215,6 +217,21 @@ attribParser =
        return $ AttributeSelector namespace name operation
   ) <?> "attribute specifier"
 
+uriParser :: Parser Uri
+uriParser =
+  try
+  ( do
+       urlSymToken
+       sParser
+       Right (d, param) <- parseAt
+       sParser
+       closeParenToken
+       return $
+         if param
+         then SplicedUriParamExt d
+         else SplicedUriExt d
+  ) <|> PlainUri <$> uriToken
+
 -- | A pseudo class or pseudo element selector like ':first' or
 -- '::before'. Arguments to pseudo functions are not parsed further.
 pseudoParser :: Parser SimpleSelectorSpecifier
@@ -282,6 +299,7 @@ termParser =
 valueParser :: Parser Value
 valueParser =
   (try (VariableValueExt <$> variableParser) <|>
+   try (splicedValueParser) <|>
    try (HexcolorValue <$> colorParser) <|>
    try (StringValue <$> stringToken) <|>
    try (mkLength <$> lengthToken) <|>
@@ -293,7 +311,7 @@ valueParser =
    try (mkDimension <$> dimensionToken) <|>
    try (NumberValue <$> numberToken) <|>
    try (PercentageValue <$> percentageToken) <|>
-   try (UriValue <$> uriToken) <|>
+   try (UriValue <$> uriParser) <|>
    IdentValue <$> identToken
   ) <?> "value"
   where
@@ -328,6 +346,12 @@ variableParser = do
   atToken
   try (VariableRef <$> variableParser) <|>
     (PlainVariable <$> identToken) <?> "variable name"
+
+-- | A variable splice like '#{myvar}'
+splicedValueParser :: Parser Value
+splicedValueParser = do
+  (Right d) <- parseHash
+  return $ SplicedValueExt d
 
 -- | A negation selector like ':not(.bla)'
 negationParser :: Parser SimpleSelectorSpecifier

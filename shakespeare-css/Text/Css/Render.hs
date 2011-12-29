@@ -5,18 +5,34 @@ import Data.Bits
 import Data.List (intersperse)
 import Data.Monoid
 import Data.String
+import Data.Text.Lazy.Builder (Builder)
+
+import Text.Shakespeare.Base
 
 import Text.Css.Ast
 
+-- | Something that can be rendered as CSS
 class CssValue a where
-  renderCss :: (IsString b, Monoid b) => a -> b
+  -- | Renders a value to CSS in an arbitrary representation
+  renderCss :: (IsString b, Monoid b, CssSplice b) => a -> b
+
+-- | Something that can treat splice references in some special way
+class CssSplice a where
+  createUriSplice :: Deref -> a
+  createUriParamSplice :: Deref -> a
+  createValueSplice :: Deref -> a
+
+instance CssSplice Builder where -- for debugging
+  createUriSplice _ = "?uri splice?"
+  createUriParamSplice _ = "?uri param splice?"
+  createValueSplice _ = "?value splice?"
 
 instance CssValue Stylesheet where
   renderCss = concatMapB renderCss . stylesheetStatements
 
 instance CssValue Statement where
   renderCss (ImportStatement url queries) =
-    "@import url(" <> str url <> ")" <>
+    "@import " <> renderCss url <>
     (if null queries then "" else (" " <> unwordsB (strL queries)))
     <> ";"
   renderCss (MediaStatement types rules) =
@@ -140,10 +156,16 @@ instance CssValue Value where
   renderCss (DimensionValue dim d) = renderDouble d <> str dim
   renderCss (StringValue s) = renderString s
   renderCss (IdentValue ident) = renderIdent ident
-  renderCss (UriValue uri) = "uri(" <> renderString uri <> ")"
+  renderCss (UriValue uri) = renderCss uri
   renderCss (HexcolorValue c) = renderCss c
-  renderCss (VariableValueExt v) = renderCss v
   renderCss (EscapedStringValueExt e) = str e
+  renderCss (VariableValueExt v) = renderCss v
+  renderCss (SplicedValueExt v) = createValueSplice v
+
+instance CssValue Uri where
+  renderCss (PlainUri uri) = "url(" <> renderString uri <> ")"
+  renderCss (SplicedUriExt uri) = createUriSplice uri
+  renderCss (SplicedUriParamExt uri) = createUriSplice uri
 
 instance CssValue Variable where
   renderCss (PlainVariable name) = "@" <> str name

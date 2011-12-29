@@ -1,6 +1,8 @@
 -- | The abstract syntax tree for CSS-like stylesheets
 module Text.Css.Ast where
 
+import Text.Shakespeare.Base
+
 -- | A CSS stylesheet
 newtype Stylesheet =
   Stylesheet
@@ -12,7 +14,7 @@ newtype Stylesheet =
 data Statement =
   -- | '@import' statement
   ImportStatement
-  { importUrl :: String
+  { importUrl :: Uri
   , importQueries ::[String]
   } |
   -- | '@media' statement
@@ -44,13 +46,13 @@ data Ruleset =
   , rulesetDeclarations :: [Declaration]
   } |
   -- | Extension: A mixin definition
-  MixinDefExt -- TODO
+  MixinDefExt -- TODO parser
   { mixinSelector :: Selector
   , mixinArgs :: [MixinArgument]
   , mixinDeclarations :: [Declaration]
   } |
   -- | Extension: A variable declaration
-  VarDeclStatementExt -- TODO
+  VarDeclStatementExt -- TODO parser
   { varDeclName :: String
   , varDeclTerm :: Term
   }
@@ -58,7 +60,7 @@ data Ruleset =
 
 -- | An argument to a mixin definition
 data MixinArgument =
-  MixinArgument -- TODO
+  MixinArgument -- TODO parser
   { mixinArgumentName :: String
   , mixinArgumentDefValue :: Value
   }
@@ -77,7 +79,7 @@ data Declaration =
   { declarationRuleset :: Ruleset
   } |
   -- | Extension: An application of a previous mixin
-  MixinApplicationExt -- TODO
+  MixinApplicationExt -- TODO parser
   { mixinAppSelector :: Selector
   }
   deriving (Show)
@@ -173,12 +175,22 @@ data Value
   | DimensionValue String Double
   | StringValue String
   | IdentValue String
-  | UriValue String
+  | UriValue Uri
   | HexcolorValue Color
     -- | Extension: Raw CSS value that should be inserted verbatim
-  | EscapedStringValueExt String -- TODO
+  | EscapedStringValueExt String -- TODO parser
     -- | Extension: Variable reference
   | VariableValueExt Variable
+    -- | Extension: Hamlet-spliced value
+  | SplicedValueExt Deref
+  deriving (Show)
+
+data Uri
+  = PlainUri String
+    -- | Extension: Hamlet-spliced URLs
+  | SplicedUriExt Deref
+    -- | Extension: Hamlet-spliced URL params
+  | SplicedUriParamExt Deref
   deriving (Show)
 
 -- | A variable or variable reference
