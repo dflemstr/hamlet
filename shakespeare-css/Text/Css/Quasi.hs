@@ -3,8 +3,6 @@ module Text.Css.Quasi where
 
 import Data.List
 import Data.Maybe
-import qualified Data.Text.Lazy as Text
-import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder as Builder
 
 import Language.Haskell.TH
@@ -77,12 +75,12 @@ instance Spliced Ruleset where
     case rs of
       Ruleset sels decls ->
         [| RulesetE
-           $(builderFromBuilder . unwordsB . map renderCss $ sels)
+           $(builderFromString . unwords . map renderCss $ sels)
            $(resolveSplices n decls)
          |]
       MixinDefExt sel args decls ->
         [| MixinDefExt
-           $(builderFromBuilder . renderCss $ sel)
+           $(builderFromString . renderCss $ sel)
            $(resolveSplices n args)
            $(resolveSplices n decls)
          |]
@@ -105,7 +103,7 @@ instance Spliced Declaration where
       RulesetDeclarationExt rs ->
         [| RulesetDeclarationExtE $(resolveSplices n rs) |]
       MixinApplicationExt sel ->
-        [| MixinApplicationExtE $(builderFromBuilder . renderCss $ sel) |]
+        [| MixinApplicationExtE $(builderFromString . renderCss $ sel) |]
 
 instance Spliced Expression where
   resolveSplices n (Expression elems) =
@@ -235,10 +233,6 @@ instance Lift Unit where
   lift FreqKiloHerz = [| FreqKiloHerz |]
   lift Ems = [| Ems |]
   lift Exs = [| Exs |]
-
-builderFromBuilder :: Builder -> Q Exp
-builderFromBuilder =
-  builderFromString . Text.unpack . Builder.toLazyText
 
 builderFromString :: String -> Q Exp
 builderFromString s =

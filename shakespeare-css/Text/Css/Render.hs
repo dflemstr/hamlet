@@ -5,14 +5,13 @@ import Data.Bits
 import Data.List (intersperse)
 import Data.Monoid
 import Data.String
-import Data.Text.Lazy.Builder (Builder)
 
 import Text.Css.Ast
 
 -- | Something that can be rendered as CSS
 class CssValue a where
   -- | Renders a value to CSS
-  renderCss :: a -> Builder
+  renderCss :: (IsString b, Monoid b) =>  a -> b
 
 instance CssValue Stylesheet where
   renderCss = concatMapB renderCss . stylesheetStatements

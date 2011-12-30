@@ -2,103 +2,99 @@
 module Text.Css.Runtime where
 
 import Data.String
-import qualified Data.Text.Lazy as Text
-import qualified Data.Text.Lazy.Builder as Builder
+import Data.Text.Lazy.Builder (Builder)
 
 import Text.ParserCombinators.Parsec (parse)
 
 import Text.Css.Ast
 import qualified Text.Css.Parser as CssParser
-import Text.Css.Render
 
 -- | Runtime representation of a Css expression,
--- parameterized by the expression type it represents, and the type
--- that the AST has been partially rendered to.
-data CssExpr a s where
+-- parameterized by the expression type it represents.
+data CssExpr a where
   ImportStatementE
-    :: CssExpr Uri s -> s -> CssExpr Statement s
+    :: CssExpr Uri -> Builder -> CssExpr Statement
   MediaStatementE
-    :: s -> [CssExpr Ruleset s] -> CssExpr Statement s
+    :: Builder -> [CssExpr Ruleset] -> CssExpr Statement
   PageStatementE
-    :: s -> [CssExpr Declaration s] -> CssExpr Statement s
+    :: Builder -> [CssExpr Declaration] -> CssExpr Statement
   RulesetStatementE
-    :: CssExpr Ruleset s -> CssExpr Statement s
+    :: CssExpr Ruleset -> CssExpr Statement
   AtRuleStatementE
-    :: s -> [CssExpr Declaration s] -> CssExpr Statement s
+    :: Builder -> [CssExpr Declaration] -> CssExpr Statement
 
   RulesetE
-    :: s -> [CssExpr Declaration s] -> CssExpr Ruleset s
+    :: Builder -> [CssExpr Declaration] -> CssExpr Ruleset
   MixinDefExtE
-    :: s -> [CssExpr MixinArgument s]
-       -> [CssExpr Declaration s] -> CssExpr Ruleset s
+    :: Builder -> [CssExpr MixinArgument]
+       -> [CssExpr Declaration] -> CssExpr Ruleset
   VarDeclStatementExtE
-    :: s -> [CssExpr Term s] -> CssExpr Ruleset s
+    :: Builder -> [CssExpr Term] -> CssExpr Ruleset
 
   MixinArgumentE
-    :: s -> [CssExpr Value s] -> CssExpr MixinArgument s
+    :: Builder -> [CssExpr Value] -> CssExpr MixinArgument
 
   PropertyDeclarationE
-    :: s -> CssExpr Expression s -> Bool -> CssExpr Declaration s
+    :: Builder -> CssExpr Expression -> Bool -> CssExpr Declaration
   RulesetDeclarationExtE
-    :: CssExpr Ruleset s -> CssExpr Declaration s
+    :: CssExpr Ruleset -> CssExpr Declaration
   MixinApplicationExtE
-    :: s -> CssExpr Declaration s
+    :: Builder -> CssExpr Declaration
 
   ExpressionE
-    :: [Either (CssExpr Term s) ExprOperator] -> CssExpr Expression s
+    :: [Either (CssExpr Term) ExprOperator] -> CssExpr Expression
 
   ValueTermE
-    :: CssExpr Value s -> CssExpr Term s
+    :: CssExpr Value -> CssExpr Term
   NegateTermE
-    :: CssExpr Term s -> CssExpr Term s
+    :: CssExpr Term -> CssExpr Term
   AbsTermE
-    :: CssExpr Term s -> CssExpr Term s
+    :: CssExpr Term -> CssExpr Term
   FunctionTermE
-    :: s -> CssExpr Expression s -> CssExpr Term s
+    :: Builder -> CssExpr Expression -> CssExpr Term
   ParensTermExtE
-    :: CssExpr Term s -> CssExpr Term s
+    :: CssExpr Term -> CssExpr Term
   AddTermExtE
-    :: CssExpr Term s -> CssExpr Term s -> CssExpr Term s
+    :: CssExpr Term -> CssExpr Term -> CssExpr Term
   SubTermExtE
-    :: CssExpr Term s -> CssExpr Term s -> CssExpr Term s
+    :: CssExpr Term -> CssExpr Term -> CssExpr Term
   MulTermExtE
-    :: CssExpr Term s -> CssExpr Term s -> CssExpr Term s
+    :: CssExpr Term -> CssExpr Term -> CssExpr Term
   DivTermExtE
-    :: CssExpr Term s -> CssExpr Term s -> CssExpr Term s
+    :: CssExpr Term -> CssExpr Term -> CssExpr Term
 
   NumberValueE
-    :: Double -> CssExpr Value s
+    :: Double -> CssExpr Value
   PercentageValueE
-    :: Double -> CssExpr Value s
+    :: Double -> CssExpr Value
   UnitValueE
-    :: Unit -> Double -> CssExpr Value s
+    :: Unit -> Double -> CssExpr Value
   DimensionValueE
-    :: s -> Double -> CssExpr Value s
+    :: Builder -> Double -> CssExpr Value
   StringValueE
-    :: s -> CssExpr Value s
+    :: Builder -> CssExpr Value
   IdentValueE
-    :: s -> CssExpr Value s
+    :: Builder -> CssExpr Value
   UriValueE
-    :: CssExpr Uri s -> CssExpr Value s
+    :: CssExpr Uri -> CssExpr Value
   HexcolorValueE
-    :: Color -> CssExpr Value s
+    :: Color -> CssExpr Value
   EscapedStringValueExtE
-    :: s -> CssExpr Value s
+    :: Builder -> CssExpr Value
   VariableValueExtE
-    :: Variable -> CssExpr Value s
+    :: Variable -> CssExpr Value
 
   PlainUriE
-    :: s -> CssExpr Uri s
+    :: Builder -> CssExpr Uri
 
   PlainVariableE
-    :: s -> CssExpr Variable s
+    :: Builder -> CssExpr Variable
   VariableRefE
-    :: CssExpr Variable s -> CssExpr Variable s
+    :: CssExpr Variable -> CssExpr Variable
 
-parseValue :: (CssValue a, IsString s) => a -> CssExpr Value s
+parseValue :: String -> CssExpr Value
 parseValue =
-  handleResult . parse CssParser.valueParser "value splice" .
-  Text.unpack . Builder.toLazyText . renderCss
+  handleResult . parse CssParser.valueParser "value splice"
   where
     handleResult (Right v) =
       case v of
@@ -126,10 +122,9 @@ parseValue =
           "Cannot refer to value splices from the result of a value splice"
     handleResult (Left err) = error . show $ err
 
-parseUri :: (CssValue a, IsString s) => a -> CssExpr Uri s
+parseUri :: String -> CssExpr Uri
 parseUri =
-  handleResult . parse CssParser.uriParser "uri splice" .
-  Text.unpack . Builder.toLazyText . renderCss
+  handleResult . parse CssParser.uriParser "uri splice"
   where
     handleResult (Right u) =
       case u of
