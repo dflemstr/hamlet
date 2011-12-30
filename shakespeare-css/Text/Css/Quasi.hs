@@ -3,6 +3,7 @@ module Text.Css.Quasi where
 
 import Data.List
 import Data.Maybe
+import Data.String
 import qualified Data.Text.Lazy.Builder as Builder
 
 import Language.Haskell.TH
@@ -42,7 +43,7 @@ class Spliced a where
 
 instance Spliced Stylesheet where
   resolveSplices n (Stylesheet smts)=
-    [| Stylesheet $(resolveSplices n smts) |]
+    [| StylesheetE $(resolveSplices n smts) |]
 
 instance Spliced Statement where
   resolveSplices n smt =
@@ -75,9 +76,23 @@ instance Spliced Ruleset where
     case rs of
       Ruleset sels decls ->
         [| RulesetE
-           $(builderFromString . unwords . map renderCss $ sels)
+           $(selectorsAnnot)
            $(resolveSplices n decls)
          |]
+        where
+          selectorsAnnot = fmap ListE . mapM annotSelector $ sels
+          annotSelector (Selector elems) =
+            [| SelectorE
+               $(fmap ListE . mapM mkBuilders .
+                 squashRight . map annotElem $ elems)
+             |]
+          annotElem (Right c) = Right . renderCss $ c
+          annotElem (Left (SimpleSelector SelectorParentExt specs)) =
+            Left . concatMapB renderCss $ specs
+          annotElem (Left s) =
+            Right . renderCss $ s
+          mkBuilders (Left s)  = [| Left  $(builderFromString s) |]
+          mkBuilders (Right s) = [| Right $(builderFromString s) |]
       MixinDefExt sel args decls ->
         [| MixinDefExt
            $(builderFromString . renderCss $ sel)
@@ -172,7 +187,7 @@ instance Spliced Value where
       VariableValueExt var ->
         [| VariableValueExtE $(lift var) |]
       SplicedValueExt ref ->
-        [| parseValue |] `appE` return (derefToExp [] ref)
+        [| liftValue . toCssValue |] `appE` return (derefToExp [] ref)
 
 instance Spliced Uri where
   resolveSplices n uri =
@@ -180,9 +195,9 @@ instance Spliced Uri where
       PlainUri u ->
         [| PlainUriE $(builderFromString u) |]
       SplicedUriExt ref ->
-        [| parseUri |] `appE` return (derefToExp [] ref)
+        [| liftUri . toCssUri |] `appE` return (derefToExp [] ref)
       SplicedUriParamExt ref ->
-        [| parseUri |] `appE`
+        [| liftUri . toCssUri |] `appE`
         ([| uncurry |] `appE` varE n `appE` return (derefToExp [] ref))
 
 -- We don't want "instance Lift a => Spliced a" because
@@ -240,3 +255,38 @@ builderFromString s =
 
 rationalLit :: (Real a) => a -> Q Exp
 rationalLit = return . LitE . RationalL . toRational
+
+liftValue :: Value -> CssExpr Value
+liftValue v =
+  case v of
+    NumberValue d -> NumberValueE d
+    PercentageValue d -> PercentageValueE d
+    UnitValue u d -> UnitValueE u d
+    DimensionValue dim d ->
+      DimensionValueE (fromString dim) d
+    StringValue s ->
+      StringValueE . fromString $ s
+    IdentValue idf ->
+      IdentValueE . fromString $ idf
+    UriValue (PlainUri uri) ->
+      UriValueE . PlainUriE . fromString $ uri
+    UriValue _ ->
+      error
+      "Cannot refer to URI splices from the result of a value splice"
+    HexcolorValue color -> HexcolorValueE color
+    EscapedStringValueExt esc ->
+      EscapedStringValueExtE . fromString $ esc
+    VariableValueExt var ->
+      VariableValueExtE var
+    SplicedValueExt _ ->
+      error
+      "Cannot refer to value splices from the result of a value splice"
+
+liftUri :: Uri -> CssExpr Uri
+liftUri u =
+  case u of
+    PlainUri uri ->
+      PlainUriE . fromString $ uri
+    _ ->
+      error
+      "Cannot refer to URI splices from the result of an URI splice"

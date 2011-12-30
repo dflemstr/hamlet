@@ -1,7 +1,6 @@
-{-# LANGUAGE TemplateHaskell, GADTs #-}
+{-# LANGUAGE TemplateHaskell, GADTs, FlexibleInstances, StandaloneDeriving #-}
 module Text.Css.Runtime where
 
-import Data.String
 import Data.Text.Lazy.Builder (Builder)
 
 import Text.ParserCombinators.Parsec (parse)
@@ -12,6 +11,9 @@ import qualified Text.Css.Parser as CssParser
 -- | Runtime representation of a Css expression,
 -- parameterized by the expression type it represents.
 data CssExpr a where
+  StylesheetE
+    :: [CssExpr Statement] -> CssExpr Stylesheet
+
   ImportStatementE
     :: CssExpr Uri -> Builder -> CssExpr Statement
   MediaStatementE
@@ -24,7 +26,7 @@ data CssExpr a where
     :: Builder -> [CssExpr Declaration] -> CssExpr Statement
 
   RulesetE
-    :: Builder -> [CssExpr Declaration] -> CssExpr Ruleset
+    :: [CssExpr Selector] -> [CssExpr Declaration] -> CssExpr Ruleset
   MixinDefExtE
     :: Builder -> [CssExpr MixinArgument]
        -> [CssExpr Declaration] -> CssExpr Ruleset
@@ -40,6 +42,12 @@ data CssExpr a where
     :: CssExpr Ruleset -> CssExpr Declaration
   MixinApplicationExtE
     :: Builder -> CssExpr Declaration
+
+  SelectorE
+    :: [ Either
+         Builder -- Prepend parent to this dynamic chunk
+         Builder -- Rendered non-dynamic chunk
+       ] -> CssExpr Selector
 
   ExpressionE
     :: [Either (CssExpr Term) ExprOperator] -> CssExpr Expression
@@ -92,44 +100,30 @@ data CssExpr a where
   VariableRefE
     :: CssExpr Variable -> CssExpr Variable
 
-parseValue :: String -> CssExpr Value
+deriving instance Show a => Show (CssExpr a)
+
+class CssValue a where
+  toCssValue :: a -> Value
+
+instance CssValue [Char] where
+  toCssValue = parseValue
+
+class CssUri a where
+  toCssUri :: a -> Uri
+
+instance CssUri [Char] where
+  toCssUri = parseUri
+
+parseValue :: String -> Value
 parseValue =
   handleResult . parse CssParser.valueParser "value splice"
   where
-    handleResult (Right v) =
-      case v of
-        NumberValue d -> NumberValueE d
-        PercentageValue d -> PercentageValueE d
-        UnitValue u d -> UnitValueE u d
-        DimensionValue dim d ->
-          DimensionValueE (fromString dim) d
-        StringValue s ->
-          StringValueE . fromString $ s
-        IdentValue idf ->
-          IdentValueE . fromString $ idf
-        UriValue (PlainUri uri) ->
-          UriValueE . PlainUriE . fromString $ uri
-        UriValue _ ->
-          error $
-          "Cannot refer to URI splices from the result of a value splice"
-        HexcolorValue color -> HexcolorValueE color
-        EscapedStringValueExt esc ->
-          EscapedStringValueExtE . fromString $ esc
-        VariableValueExt var ->
-          VariableValueExtE var
-        SplicedValueExt _ ->
-          error $
-          "Cannot refer to value splices from the result of a value splice"
+    handleResult (Right v) = v
     handleResult (Left err) = error . show $ err
 
-parseUri :: String -> CssExpr Uri
+parseUri :: String -> Uri
 parseUri =
   handleResult . parse CssParser.uriParser "uri splice"
   where
-    handleResult (Right u) =
-      case u of
-        PlainUri uri ->
-          PlainUriE . fromString $ uri
-        _ ->
-          error "Cannot refer to URI splices from the result of an URI splice"
+    handleResult (Right u) = u
     handleResult (Left err) = error . show $ err

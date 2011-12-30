@@ -9,14 +9,14 @@ import Data.String
 import Text.Css.Ast
 
 -- | Something that can be rendered as CSS
-class CssValue a where
+class IsCss a where
   -- | Renders a value to CSS
   renderCss :: (IsString b, Monoid b) =>  a -> b
 
-instance CssValue Stylesheet where
+instance IsCss Stylesheet where
   renderCss = concatMapB renderCss . stylesheetStatements
 
-instance CssValue Statement where
+instance IsCss Statement where
   renderCss (ImportStatement url queries) =
     "@import " <> renderCss url <>
     (if null queries then "" else (" " <> unwordsB (strL queries)))
@@ -33,7 +33,7 @@ instance CssValue Statement where
     "@" <> str name <> "{" <>
     concatMapB renderCss decls <> "}"
 
-instance CssValue Ruleset where
+instance IsCss Ruleset where
   renderCss (Ruleset sel decls) =
     (unwordsB . map renderCss $ sel) <> "{" <>
     (concatMapB renderCss $ decls) <> "}"
@@ -43,11 +43,11 @@ instance CssValue Ruleset where
   renderCss (VarDeclStatementExt name term) =
     "@" <> str name <> ":" <> renderCss term <> ";"
 
-instance CssValue MixinArgument where
+instance IsCss MixinArgument where
   renderCss (MixinArgument name value) =
     str name <> ":" <> renderCss value
 
-instance CssValue Declaration where
+instance IsCss Declaration where
   renderCss (PropertyDeclaration name expr prio) =
     str name <> ":" <> renderCss expr <>
     (if prio then "!important" else "") <> ";"
@@ -55,19 +55,23 @@ instance CssValue Declaration where
   renderCss (MixinApplicationExt selector) =
     renderCss selector <> ";"
 
-instance CssValue Selector where
+instance IsCss Selector where
   renderCss =
     concatMapB renderElem . selectorElems
     where
       renderElem (Left sel) = renderCss sel
       renderElem (Right comb) = renderCss comb
 
-instance CssValue SimpleSelector where
-  renderCss (SimpleSelector ns name specs) =
-    maybe "" ((<>"|") . str) ns <> maybe "" str name <>
-    concatMapB renderCss specs
+instance IsCss SimpleSelector where
+  renderCss (SimpleSelector name specs) =
+    case name of
+      SelectorNothing -> ""
+      SelectorNsElem ns e -> str ns <> "|" <> str e
+      SelectorElem e -> str e
+      SelectorParentExt -> "&"
+    <> concatMapB renderCss specs
 
-instance CssValue SimpleSelectorSpecifier where
+instance IsCss SimpleSelectorSpecifier where
   renderCss (AttributeSelector ns name mOp) =
     "[" <> maybe "" ((<>"|") . str) ns <> str name <>
     maybe "" renderOp mOp <> "]"
@@ -84,10 +88,8 @@ instance CssValue SimpleSelectorSpecifier where
     "::" <> str name <> (maybe "" (\ a -> "(" <> str a <> ")") args)
   renderCss (NotSelector selector) =
     ":not(" <> renderCss selector <> ")"
-  renderCss (SuperblockSelectorExt) =
-    "&"
 
-instance CssValue AttributeOp where
+instance IsCss AttributeOp where
   renderCss ExactlyOp = "="
   renderCss ElemSpaceOp = "~="
   renderCss ElemDashOp = "|="
@@ -95,25 +97,25 @@ instance CssValue AttributeOp where
   renderCss EndsWithOp = "$="
   renderCss ContainsOp = "*="
 
-instance CssValue Combinator where
+instance IsCss Combinator where
   renderCss DescendantCombinator = " "
   renderCss ChildCombinator = ">"
   renderCss SiblingCombinator = "+"
   renderCss GeneralSiblingCombinator = "~"
 
-instance CssValue Expression where
+instance IsCss Expression where
   renderCss (Expression elems) =
     concatMapB renderTermExpr elems
     where
       renderTermExpr (Left term) = renderCss term
       renderTermExpr (Right op) = renderCss op
 
-instance CssValue ExprOperator where
+instance IsCss ExprOperator where
   renderCss SplitExprOperator = "/"
   renderCss SeqExprOperator = ","
   renderCss SpaceExprOperator = " "
 
-instance CssValue Term where
+instance IsCss Term where
   renderCss (ValueTerm v) = renderCss v
   renderCss (NegateTerm t) = "-" <> renderCss t
   renderCss (AbsTerm t) = "+" <> renderCss t
@@ -130,7 +132,7 @@ instance CssValue Term where
   renderCss (DivTermExt t1 t2) =
     renderCss t1 <> "/" <> renderCss t2
 
-instance CssValue Value where
+instance IsCss Value where
   renderCss (NumberValue d) = renderDouble d
   renderCss (PercentageValue d) = renderDouble d <> "%"
   renderCss (UnitValue unit d) = renderDouble d <> renderCss unit
@@ -143,16 +145,16 @@ instance CssValue Value where
   renderCss (VariableValueExt v) = renderCss v
   renderCss (SplicedValueExt _) = "?value splice?"
 
-instance CssValue Uri where
+instance IsCss Uri where
   renderCss (PlainUri uri) = "url(" <> renderString uri <> ")"
   renderCss (SplicedUriExt _) = "?uri splice?"
   renderCss (SplicedUriParamExt _) = "?uri param splice?"
 
-instance CssValue Variable where
+instance IsCss Variable where
   renderCss (PlainVariable name) = "@" <> str name
   renderCss (VariableRef var) = "@" <> renderCss var
 
-instance CssValue Color where
+instance IsCss Color where
   renderCss (Color rd gd bd ad) =
     if ad == 1
     then renderHash rd gd bd
@@ -182,7 +184,7 @@ instance CssValue Color where
         | v > ma = ma
         | otherwise = v
 
-instance CssValue Unit where
+instance IsCss Unit where
   renderCss LengthPixels = "px"
   renderCss LengthCentimeters = "cm"
   renderCss LengthMillimeters = "mm"
@@ -221,6 +223,14 @@ renderIdent =
   str
   -- TODO escape chars that are not ("a-zA-Z_0-9-" or non-ascii),
   -- and escape "0-9-" in the beginning
+
+squashRight :: (Monoid a) => [Either a a] -> [Either a a]
+squashRight [] = []
+squashRight ((Right c1) : (Right c2) : xs) =
+  squashRight ((Right (c1 <> c2)) : xs)
+squashRight ((Left c1) : (Right c2) : xs) =
+  squashRight ((Left (c1 <> c2)) : xs)
+squashRight (x : xs) = x : squashRight xs
 
 unwordsB :: (IsString a, Monoid a) => [a] -> a
 unwordsB [] = ""

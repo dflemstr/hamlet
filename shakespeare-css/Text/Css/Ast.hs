@@ -85,7 +85,7 @@ data Declaration =
   deriving (Show)
 
 -- | A selector that matches elements
-newtype Selector =
+data Selector =
   Selector
   { selectorElems :: [Either SimpleSelector Combinator]
   }
@@ -94,10 +94,17 @@ newtype Selector =
 -- | A simple selector without constraints
 data SimpleSelector =
   SimpleSelector
-  { selectorNamespace :: Maybe String
-  , selectorName :: Maybe String
+  { selectorName :: SimpleSelectorName
   , selectorSpecifiers :: [SimpleSelectorSpecifier]
   }
+  deriving (Show)
+
+data SimpleSelectorName
+  = SelectorNothing
+  | SelectorNsElem String String
+  | SelectorElem String
+    -- | Extension: Insert the parent selector as the name
+  | SelectorParentExt
   deriving (Show)
 
 -- | A specifier that adds constraints to a simple selector
@@ -108,8 +115,6 @@ data SimpleSelectorSpecifier
   | PseudoClassSelector String (Maybe String)
   | PseudoElementSelector String (Maybe String)
   | NotSelector SimpleSelector
-    -- | Extension: Refers to the selector of the parent block
-  | SuperblockSelectorExt
   deriving (Show)
 
 -- | An operator for attribute selectors

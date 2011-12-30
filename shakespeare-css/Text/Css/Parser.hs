@@ -168,19 +168,27 @@ simpleSelectorParser :: Parser SimpleSelector
 simpleSelectorParser =
   ( do
        namespace <- optionMaybe (try namespacePrefixParser)
-       name <- optionMaybe (try elementNameParser)
+       n <- optionMaybe (Just <$> try elementNameParser <|>
+                         ampersandToken *> return Nothing)
        specifiers <-
-         if isJust name
+         if isJust n
          then many selectorSpecifierParser
          else many1 selectorSpecifierParser
-       return $ SimpleSelector namespace name specifiers
+       name <-
+         case (namespace, n) of
+           (Just ns, Just (Just e)) -> return $ SelectorNsElem ns e
+           (Nothing, Just (Just e)) -> return $ SelectorElem e
+           (Nothing, Just Nothing)  -> return $ SelectorParentExt
+           (Nothing, Nothing)       -> return $ SelectorNothing
+           (_      , _)             ->
+             fail "Parent selectors cannot have namespaces"
+       return $ SimpleSelector name specifiers
   ) <?> "simple selector"
 
 -- | A specifier that further constrains a simple selector
 selectorSpecifierParser :: Parser SimpleSelectorSpecifier
 selectorSpecifierParser =
   try (IDSelector <$> hashToken) <|>
-  try (ampersandToken *> return SuperblockSelectorExt) <|>
   try (ClassSelector <$> classParser) <|>
   try (attribParser) <|>
   try (negationParser) <|>
