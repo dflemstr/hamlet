@@ -7,25 +7,12 @@ import Data.Monoid
 import Data.String
 import Data.Text.Lazy.Builder (Builder)
 
-import Text.Shakespeare.Base
-
 import Text.Css.Ast
 
 -- | Something that can be rendered as CSS
 class CssValue a where
-  -- | Renders a value to CSS in an arbitrary representation
-  renderCss :: (IsString b, Monoid b, CssSplice b) => a -> b
-
--- | Something that can treat splice references in some special way
-class CssSplice a where
-  createUriSplice :: Deref -> a
-  createUriParamSplice :: Deref -> a
-  createValueSplice :: Deref -> a
-
-instance CssSplice Builder where -- for debugging
-  createUriSplice _ = "?uri splice?"
-  createUriParamSplice _ = "?uri param splice?"
-  createValueSplice _ = "?value splice?"
+  -- | Renders a value to CSS
+  renderCss :: a -> Builder
 
 instance CssValue Stylesheet where
   renderCss = concatMapB renderCss . stylesheetStatements
@@ -147,12 +134,7 @@ instance CssValue Term where
 instance CssValue Value where
   renderCss (NumberValue d) = renderDouble d
   renderCss (PercentageValue d) = renderDouble d <> "%"
-  renderCss (LengthValue unit d) = renderDouble d <> renderCss unit
-  renderCss (EmsValue d) = renderDouble d <> "em"
-  renderCss (ExsValue d) = renderDouble d <> "ex"
-  renderCss (AngleValue unit d) = renderDouble d <> renderCss unit
-  renderCss (TimeValue unit d) = renderDouble d <> renderCss unit
-  renderCss (FreqValue unit d) = renderDouble d <> renderCss unit
+  renderCss (UnitValue unit d) = renderDouble d <> renderCss unit
   renderCss (DimensionValue dim d) = renderDouble d <> str dim
   renderCss (StringValue s) = renderString s
   renderCss (IdentValue ident) = renderIdent ident
@@ -160,12 +142,12 @@ instance CssValue Value where
   renderCss (HexcolorValue c) = renderCss c
   renderCss (EscapedStringValueExt e) = str e
   renderCss (VariableValueExt v) = renderCss v
-  renderCss (SplicedValueExt v) = createValueSplice v
+  renderCss (SplicedValueExt _) = "?value splice?"
 
 instance CssValue Uri where
   renderCss (PlainUri uri) = "url(" <> renderString uri <> ")"
-  renderCss (SplicedUriExt uri) = createUriSplice uri
-  renderCss (SplicedUriParamExt uri) = createUriSplice uri
+  renderCss (SplicedUriExt _) = "?uri splice?"
+  renderCss (SplicedUriParamExt _) = "?uri param splice?"
 
 instance CssValue Variable where
   renderCss (PlainVariable name) = "@" <> str name
@@ -201,27 +183,23 @@ instance CssValue Color where
         | v > ma = ma
         | otherwise = v
 
-instance CssValue LengthUnit where
+instance CssValue Unit where
   renderCss LengthPixels = "px"
   renderCss LengthCentimeters = "cm"
   renderCss LengthMillimeters = "mm"
   renderCss LengthInches = "in"
   renderCss LengthPoints = "pt"
   renderCss LengthPica = "pc"
-
-instance CssValue AngleUnit where
   renderCss AngleDegrees = "deg"
   renderCss AngleRadians = "rad"
   renderCss AngleGradians = "grad"
   renderCss AngleTurns = "turns"
-
-instance CssValue TimeUnit where
   renderCss TimeSeconds = "s"
   renderCss TimeMilliseconds = "ms"
-
-instance CssValue FreqUnit where
   renderCss FreqHerz = "hz"
   renderCss FreqKiloHerz = "khz"
+  renderCss Ems = "em"
+  renderCss Exs = "ex"
 
 renderDouble :: (IsString a) => Double -> a
 renderDouble d =

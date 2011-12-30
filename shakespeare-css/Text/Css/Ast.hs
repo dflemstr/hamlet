@@ -15,7 +15,7 @@ data Statement =
   -- | '@import' statement
   ImportStatement
   { importUrl :: Uri
-  , importQueries ::[String]
+  , importQueries :: [String]
   } |
   -- | '@media' statement
   MediaStatement
@@ -166,12 +166,7 @@ data Term
 data Value
   = NumberValue Double
   | PercentageValue Double
-  | LengthValue LengthUnit Double
-  | EmsValue Double
-  | ExsValue Double
-  | AngleValue AngleUnit Double
-  | TimeValue TimeUnit Double
-  | FreqValue FreqUnit Double
+  | UnitValue Unit Double
   | DimensionValue String Double
   | StringValue String
   | IdentValue String
@@ -213,32 +208,22 @@ data Color =
   }
   deriving (Show)
 
--- | Units of length
-data LengthUnit
+-- | Units of dimensions
+data Unit
   = LengthPixels
   | LengthCentimeters
   | LengthMillimeters
   | LengthInches
   | LengthPoints
   | LengthPica
-  deriving (Show)
-
--- | Angle units
-data AngleUnit
-  = AngleDegrees
+  | AngleDegrees
   | AngleRadians
   | AngleGradians
   | AngleTurns
-  deriving (Show)
-
--- | Time units
-data TimeUnit
-  = TimeSeconds
+  | TimeSeconds
   | TimeMilliseconds
-  deriving (Show)
-
--- | Frequency units
-data FreqUnit
-  = FreqHerz
+  | FreqHerz
   | FreqKiloHerz
+  | Ems -- Does not represent length according to standard!
+  | Exs -- ditto
   deriving (Show)

@@ -44,9 +44,11 @@ library
                      Text.Css.Macro
                      Text.Css.Parser
                      Text.Css.Render
+                     Text.Css.Runtime
                      Text.Css.Token
                      Text.Css.Util
-    ghc-options:     -Wall
+                     Text.Css.Quasi
+    ghc-options:     -Wall -fno-warn-orphans
 
 test-suite test
     hs-source-dirs: test

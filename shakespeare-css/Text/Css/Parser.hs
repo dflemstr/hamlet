@@ -298,28 +298,28 @@ termParser =
 -- variable resolution -> extension)
 valueParser :: Parser Value
 valueParser =
-  (try (VariableValueExt <$> variableParser) <|>
+  (try (UriValue <$> uriParser) <|>
    try (splicedValueParser) <|>
+   try (VariableValueExt <$> variableParser) <|>
    try (HexcolorValue <$> colorParser) <|>
    try (StringValue <$> stringToken) <|>
    try (mkLength <$> lengthToken) <|>
-   try (EmsValue <$> emsToken) <|>
-   try (ExsValue <$> exsToken) <|>
+   try (UnitValue Ems <$> emsToken) <|>
+   try (UnitValue Exs <$> exsToken) <|>
    try (mkAngle <$> angleToken) <|>
    try (mkTime <$> timeToken) <|>
    try (mkFreq <$> freqToken) <|>
    try (mkDimension <$> dimensionToken) <|>
    try (NumberValue <$> numberToken) <|>
    try (PercentageValue <$> percentageToken) <|>
-   try (UriValue <$> uriParser) <|>
    IdentValue <$> identToken
   ) <?> "value"
   where
-    mkSomething a b = uncurry a . first b
-    mkLength = mkSomething LengthValue mkLenUnit
-    mkAngle = mkSomething AngleValue mkAngleUnit
-    mkTime = mkSomething TimeValue mkTimeUnit
-    mkFreq = mkSomething FreqValue mkFreqUnit
+    mkSomething b = uncurry UnitValue . first b
+    mkLength = mkSomething mkLenUnit
+    mkAngle = mkSomething mkAngleUnit
+    mkTime = mkSomething mkTimeUnit
+    mkFreq = mkSomething mkFreqUnit
     mkDimension = uncurry DimensionValue
     mkLenUnit "px" = LengthPixels
     mkLenUnit "cm" = LengthCentimeters
