@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, GADTs #-}
+{-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
 module Text.Css.Quasi where
 
 import Data.List
@@ -7,8 +7,6 @@ import qualified Data.Text.Lazy.Builder as Builder
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
-
-import System.IO
 
 import Text.Shakespeare.Base
 
@@ -55,23 +53,23 @@ instance Spliced Statement where
            $(builderFromString $
              if null qs
              then ""
-             else " " <> unwords qs)
+             else " " <> intercalate "," qs)
          |]
       MediaStatement qs rs ->
         [| MediaStatementE
-           $(builderFromString $ intercalate "," qs)
+           $(builderFromString . intercalate "," $ qs)
            $(resolveSplices n rs)
          |]
       PageStatement nam decls ->
         [| PageStatementE
-           $(builderFromString $ maybe "" (":"<>) nam)
+           $(builderFromString $ maybe "" ((":"<>) . renderIdent) nam)
            $(resolveSplices n decls)
          |]
       RulesetStatement r ->
         [| RulesetStatementE $(resolveSplices n r) |]
-      AtRuleStatement nam decls ->
+      AtRuleStatement name decls ->
         [| AtRuleStatementE
-           $(builderFromString nam)
+           $(builderFromString . renderIdent $ name)
            $(resolveSplices n decls)
          |]
 
@@ -80,11 +78,9 @@ instance Spliced Ruleset where
     case rs of
       Ruleset sels decls ->
         [| RulesetE
-           $(selectorsAnnot)
+           $(resolveSplices n sels)
            $(resolveSplices n decls)
          |]
-        where
-          selectorsAnnot = fmap ListE . mapM (resolveSplices n) $ sels
       MixinDefExt sel args decls ->
         [| MixinDefExt
            $(resolveSplices n sel)
@@ -92,18 +88,24 @@ instance Spliced Ruleset where
            $(resolveSplices n decls)
          |]
       VarDeclStatementExt name term ->
-        [| VarDeclStatementExtE $(lift name) $(resolveSplices n term) |]
+        [| VarDeclStatementExtE
+           $(lift name)
+           $(resolveSplices n term)
+         |]
 
 instance Spliced MixinArgument where
   resolveSplices n (MixinArgument name val) =
-    [| MixinArgumentE $(builderFromString name) $(resolveSplices n val) |]
+    [| MixinArgumentE
+       $(lift name)
+       $(resolveSplices n val)
+     |]
 
 instance Spliced Declaration where
   resolveSplices n decl =
     case decl of
-      PropertyDeclaration nam expr bool ->
+      PropertyDeclaration name expr bool ->
         [| PropertyDeclarationE
-           $(builderFromString nam)
+           $(builderFromString . renderIdent $ name)
            $(resolveSplices n expr)
            $(lift bool)
          |]
@@ -127,8 +129,10 @@ instance Spliced Selector where
         Left . concatMapB renderCss $ specs
       annotElem (Left s) =
         Right . renderCss $ s
-      mkBuilders (Left s)  = [| Left  $(builderFromString s) |]
-      mkBuilders (Right s) = [| Right $(builderFromString s) |]
+      mkBuilders (Left s)  = [| Left  $(builderFromString .
+                                        renderIdent $ s) |]
+      mkBuilders (Right s) = [| Right $(builderFromString .
+                                        renderIdent $ s) |]
 
 instance Spliced Expression where
   resolveSplices n (Expression elems) =
@@ -143,9 +147,9 @@ instance Spliced Term where
       ValueTerm val -> [| ValueTermE $(resolveSplices n val) |]
       NegateTerm t -> [| NegateTermE $(resolveSplices n t) |]
       AbsTerm t -> [| AbsTermE $(resolveSplices n t) |]
-      FunctionTerm nam e ->
+      FunctionTerm name e ->
         [| FunctionTermE
-           $(builderFromString nam)
+           $(lift name)
            $(resolveSplices n e)
          |]
       ParensTermExt t -> [| ParensTermExtE $(resolveSplices n t) |]
@@ -181,7 +185,7 @@ instance Spliced Value where
         [| UnitValueE $(lift unit) (fromRational $(rationalLit d)) |]
       DimensionValue dim d ->
         [| DimensionValueE
-           $(builderFromString dim)
+           $(builderFromString . renderIdent $ dim)
            (fromRational $(rationalLit d))
          |]
       StringValue s ->
@@ -229,7 +233,8 @@ instance Lift ExprOperator where
   lift SpaceExprOperator = [| SpaceExprOperator |]
 
 instance Lift Variable where
-  lift (PlainVariable var) = [| PlainVariableE $(builderFromString var) |]
+  lift (PlainVariable var) =
+    [| PlainVariableE $(lift var) |]
   lift (VariableRef var) = [| VariableRefE $(lift var) |]
 
 instance Lift Color where

@@ -7,6 +7,10 @@ import Data.Text.Lazy.Builder (Builder)
 import Text.Css.Ast
 import Text.Css.Render
 
+-- Builder: Value is fully escaped but not "quoted" or w/ context
+-- String: Value is used at runtime for something other than
+-- concatenation and Eq
+
 newtype StylesheetR =
   StylesheetE [StatementR]
   deriving (Show)
@@ -22,11 +26,11 @@ data StatementR
 data RulesetR
   = RulesetE [SelectorR] [DeclarationR]
   | MixinDefExtE SelectorR [MixinArgumentR] [DeclarationR]
-  | VarDeclStatementExtE Builder TermR
+  | VarDeclStatementExtE String TermR
   deriving (Show)
 
 data MixinArgumentR
-  = MixinArgumentE Builder ValueR
+  = MixinArgumentE String ValueR
   deriving (Show)
 
 data DeclarationR
@@ -51,7 +55,7 @@ data TermR
   = ValueTermE ValueR
   | NegateTermE TermR
   | AbsTermE TermR
-  | FunctionTermE Builder ExpressionR
+  | FunctionTermE String ExpressionR
   | ParensTermExtE TermR
   | AddTermExtE TermR TermR
   | SubTermExtE TermR TermR
@@ -77,7 +81,7 @@ newtype UriR
   deriving (Show)
 
 data VariableR
-  = PlainVariableE Builder
+  = PlainVariableE String
   | VariableRefE VariableR
   deriving (Show)
 
@@ -108,11 +112,11 @@ instance IsRuntimeCss RulesetR where
     (intercalateB "," . map renderRuntimeCss $ args) <> "){" <>
     concatMapB renderRuntimeCss decls <> "}"
   renderRuntimeCss (VarDeclStatementExtE name term) =
-    "@" <> name <> ":" <> renderRuntimeCss term <> ";"
+    "@" <> renderIdent name <> ":" <> renderRuntimeCss term <> ";"
 
 instance IsRuntimeCss MixinArgumentR where
   renderRuntimeCss (MixinArgumentE name value) =
-    name <> ":" <> renderRuntimeCss value
+    renderIdent name <> ":" <> renderRuntimeCss value
 
 instance IsRuntimeCss DeclarationR where
   renderRuntimeCss (PropertyDeclarationE name expr prio) =
@@ -146,7 +150,7 @@ instance IsRuntimeCss TermR where
   renderRuntimeCss (AbsTermE term) =
     "+" <> renderRuntimeCss term
   renderRuntimeCss (FunctionTermE name expr) =
-    name <> "(" <> renderRuntimeCss expr <> ")"
+    renderIdent name <> "(" <> renderRuntimeCss expr <> ")"
   renderRuntimeCss (ParensTermExtE term) =
     "(" <> renderRuntimeCss term <> ")"
   renderRuntimeCss (AddTermExtE t1 t2) =
@@ -176,7 +180,7 @@ instance IsRuntimeCss UriR where
 
 instance IsRuntimeCss VariableR where
   renderRuntimeCss (PlainVariableE name) =
-    "@" <> name
+    "@" <> renderIdent name
   renderRuntimeCss (VariableRefE var) =
     "@" <> renderRuntimeCss var
 
@@ -193,7 +197,7 @@ liftValue v =
     IdentValue idf ->
       IdentValueE . fromString $ idf
     UriValue (PlainUri uri) ->
-      UriValueE . PlainUriE . fromString $ uri
+      UriValueE . PlainUriE . renderString $ uri
     UriValue _ ->
       error "Cannot resolve URI splices at runtime"
     HexcolorValue color -> HexcolorValueE color

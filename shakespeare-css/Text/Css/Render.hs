@@ -25,12 +25,12 @@ instance IsCss Statement where
     "@media " <> intercalateB "," (strL types) <> "{" <>
     concatMapB renderCss rules <> "}"
   renderCss (PageStatement name decls) =
-    "@page " <> maybe "" ((":" <>) . str) name <> "{" <>
+    "@page " <> maybe "" ((":" <>) . renderIdent) name <> "{" <>
     concatMapB renderCss decls <> "}"
   renderCss (RulesetStatement rs) =
     renderCss rs
   renderCss (AtRuleStatement name decls) =
-    "@" <> str name <> "{" <>
+    "@" <> renderIdent name <> "{" <>
     concatMapB renderCss decls <> "}"
 
 instance IsCss Ruleset where
@@ -41,15 +41,15 @@ instance IsCss Ruleset where
     renderCss sel <> "(" <> concatMapB renderCss args <>
     "){" <> concatMapB renderCss decls <> "}"
   renderCss (VarDeclStatementExt name term) =
-    "@" <> str name <> ":" <> renderCss term <> ";"
+    "@" <> renderIdent name <> ":" <> renderCss term <> ";"
 
 instance IsCss MixinArgument where
   renderCss (MixinArgument name value) =
-    str name <> ":" <> renderCss value
+    renderIdent name <> ":" <> renderCss value
 
 instance IsCss Declaration where
   renderCss (PropertyDeclaration name expr prio) =
-    str name <> ":" <> renderCss expr <>
+    renderIdent name <> ":" <> renderCss expr <>
     (if prio then "!important" else "") <> ";"
   renderCss (RulesetDeclarationExt rs) = renderCss rs
   renderCss (MixinApplicationExt selector args) =
@@ -67,26 +67,28 @@ instance IsCss SimpleSelector where
   renderCss (SimpleSelector name specs) =
     ( case name of
          SelectorNothing -> ""
-         SelectorNsElem ns e -> str ns <> "|" <> str e
-         SelectorElem e -> str e
+         SelectorNsElem ns e -> renderIdent ns <> "|" <> renderIdent e
+         SelectorElem e -> renderIdent e
          SelectorParentExt -> "&"
     ) <> concatMapB renderCss specs
 
 instance IsCss SimpleSelectorSpecifier where
   renderCss (AttributeSelector ns name mOp) =
-    "[" <> maybe "" ((<>"|") . str) ns <> str name <>
+    "[" <> maybe "" ((<>"|") . renderIdent) ns <> renderIdent name <>
     maybe "" renderOp mOp <> "]"
     where
       renderOp (operator, operand) =
         renderCss operator <> "\"" <> renderString operand <> "\""
   renderCss (ClassSelector name) =
-    "." <> str name
+    "." <> renderIdent name
   renderCss (IDSelector name) =
-    "#" <> str name
+    "#" <> renderIdent name
   renderCss (PseudoClassSelector name args) =
-    ":" <> str name <> (maybe "" (\ a -> "(" <> str a <> ")") args)
+    ":" <> renderIdent name <>
+    (maybe "" (\ a -> "(" <> renderIdent a <> ")") args)
   renderCss (PseudoElementSelector name args) =
-    "::" <> str name <> (maybe "" (\ a -> "(" <> str a <> ")") args)
+    "::" <> renderIdent name <>
+    (maybe "" (\ a -> "(" <> renderIdent a <> ")") args)
   renderCss (NotSelector selector) =
     ":not(" <> renderCss selector <> ")"
 
@@ -121,7 +123,7 @@ instance IsCss Term where
   renderCss (NegateTerm t) = "-" <> renderCss t
   renderCss (AbsTerm t) = "+" <> renderCss t
   renderCss (FunctionTerm name expr) =
-    str name <> "(" <> renderCss expr <> ")"
+    renderIdent name <> "(" <> renderCss expr <> ")"
   renderCss (ParensTermExt term) =
     "(" <> renderCss term <> ")"
   renderCss (AddTermExt t1 t2) =
@@ -152,7 +154,7 @@ instance IsCss Uri where
   renderCss (SplicedUriParamExt _) = "?uri param splice?"
 
 instance IsCss Variable where
-  renderCss (PlainVariable name) = "@" <> str name
+  renderCss (PlainVariable name) = "@" <> renderIdent name
   renderCss (VariableRef var) = "@" <> renderCss var
 
 instance IsCss Color where
