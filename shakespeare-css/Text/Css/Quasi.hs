@@ -2,34 +2,35 @@
 module Text.Css.Quasi where
 
 import Data.List
-import Data.Maybe
-import Data.String
 import qualified Data.Text.Lazy.Builder as Builder
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
 
+import System.IO
+
 import Text.Shakespeare.Base
 
 import Text.ParserCombinators.Parsec (parse)
 
 import Text.Css.Ast
+import Text.Css.Convert
 import Text.Css.Parser
 import Text.Css.Render
 import Text.Css.Runtime
 
-lucius :: QuasiQuoter
-lucius =
+citerius :: QuasiQuoter
+citerius =
   QuasiQuoter
-  { quoteExp  = luciusFromString
+  { quoteExp  = citeriusFromString
   , quotePat  = undefined
   , quoteType = undefined
   , quoteDec  = undefined
   }
 
-luciusFromString :: String -> Q Exp
-luciusFromString =
+citeriusFromString :: String -> Q Exp
+citeriusFromString =
   either (error . show) runSpliceResolver .
   parse stylesheetParser "quasiquote"
 
@@ -42,7 +43,7 @@ class Spliced a where
   resolveSplices :: Name -> a -> Q Exp
 
 instance Spliced Stylesheet where
-  resolveSplices n (Stylesheet smts)=
+  resolveSplices n (Stylesheet smts) =
     [| StylesheetE $(resolveSplices n smts) |]
 
 instance Spliced Statement where
@@ -51,16 +52,19 @@ instance Spliced Statement where
       ImportStatement uri qs ->
         [| ImportStatementE
            $(resolveSplices n uri)
-           $(builderFromString . unwords $ qs)
+           $(builderFromString $
+             if null qs
+             then ""
+             else " " <> unwords qs)
          |]
       MediaStatement qs rs ->
         [| MediaStatementE
-           $(builderFromString $ if null qs then "" else intercalate "," qs)
+           $(builderFromString $ intercalate "," qs)
            $(resolveSplices n rs)
          |]
       PageStatement nam decls ->
         [| PageStatementE
-           $(builderFromString $ fromMaybe "" nam)
+           $(builderFromString $ maybe "" (":"<>) nam)
            $(resolveSplices n decls)
          |]
       RulesetStatement r ->
@@ -80,22 +84,10 @@ instance Spliced Ruleset where
            $(resolveSplices n decls)
          |]
         where
-          selectorsAnnot = fmap ListE . mapM annotSelector $ sels
-          annotSelector (Selector elems) =
-            [| SelectorE
-               $(fmap ListE . mapM mkBuilders .
-                 squashRight . map annotElem $ elems)
-             |]
-          annotElem (Right c) = Right . renderCss $ c
-          annotElem (Left (SimpleSelector SelectorParentExt specs)) =
-            Left . concatMapB renderCss $ specs
-          annotElem (Left s) =
-            Right . renderCss $ s
-          mkBuilders (Left s)  = [| Left  $(builderFromString s) |]
-          mkBuilders (Right s) = [| Right $(builderFromString s) |]
+          selectorsAnnot = fmap ListE . mapM (resolveSplices n) $ sels
       MixinDefExt sel args decls ->
         [| MixinDefExt
-           $(builderFromString . renderCss $ sel)
+           $(resolveSplices n sel)
            $(resolveSplices n args)
            $(resolveSplices n decls)
          |]
@@ -117,8 +109,26 @@ instance Spliced Declaration where
          |]
       RulesetDeclarationExt rs ->
         [| RulesetDeclarationExtE $(resolveSplices n rs) |]
-      MixinApplicationExt sel ->
-        [| MixinApplicationExtE $(builderFromString . renderCss $ sel) |]
+      MixinApplicationExt sel args ->
+        [| MixinApplicationExtE
+           $(builderFromString . renderCss $ sel)
+           $(resolveSplices n args)
+         |]
+
+instance Spliced Selector where
+  resolveSplices _ (Selector elems) =
+    [| SelectorE
+       $(fmap ListE . mapM mkBuilders .
+         squashRight . map annotElem $ elems)
+     |]
+    where
+      annotElem (Right c) = Right . renderCss $ c
+      annotElem (Left (SimpleSelector SelectorParentExt specs)) =
+        Left . concatMapB renderCss $ specs
+      annotElem (Left s) =
+        Right . renderCss $ s
+      mkBuilders (Left s)  = [| Left  $(builderFromString s) |]
+      mkBuilders (Right s) = [| Right $(builderFromString s) |]
 
 instance Spliced Expression where
   resolveSplices n (Expression elems) =
@@ -175,9 +185,9 @@ instance Spliced Value where
            (fromRational $(rationalLit d))
          |]
       StringValue s ->
-        [| StringValueE $(builderFromString s) |]
+        [| StringValueE $(builderFromString . renderString $ s) |]
       IdentValue i ->
-        [| IdentValueE $(builderFromString i) |]
+        [| IdentValueE $(builderFromString . renderIdent $ i) |]
       UriValue uri ->
         [| UriValueE $(resolveSplices n uri) |]
       HexcolorValue v ->
@@ -193,7 +203,7 @@ instance Spliced Uri where
   resolveSplices n uri =
     case uri of
       PlainUri u ->
-        [| PlainUriE $(builderFromString u) |]
+        [| PlainUriE $(builderFromString . renderString $ u) |]
       SplicedUriExt ref ->
         [| liftUri . toCssUri |] `appE` return (derefToExp [] ref)
       SplicedUriParamExt ref ->
@@ -255,38 +265,3 @@ builderFromString s =
 
 rationalLit :: (Real a) => a -> Q Exp
 rationalLit = return . LitE . RationalL . toRational
-
-liftValue :: Value -> CssExpr Value
-liftValue v =
-  case v of
-    NumberValue d -> NumberValueE d
-    PercentageValue d -> PercentageValueE d
-    UnitValue u d -> UnitValueE u d
-    DimensionValue dim d ->
-      DimensionValueE (fromString dim) d
-    StringValue s ->
-      StringValueE . fromString $ s
-    IdentValue idf ->
-      IdentValueE . fromString $ idf
-    UriValue (PlainUri uri) ->
-      UriValueE . PlainUriE . fromString $ uri
-    UriValue _ ->
-      error
-      "Cannot refer to URI splices from the result of a value splice"
-    HexcolorValue color -> HexcolorValueE color
-    EscapedStringValueExt esc ->
-      EscapedStringValueExtE . fromString $ esc
-    VariableValueExt var ->
-      VariableValueExtE var
-    SplicedValueExt _ ->
-      error
-      "Cannot refer to value splices from the result of a value splice"
-
-liftUri :: Uri -> CssExpr Uri
-liftUri u =
-  case u of
-    PlainUri uri ->
-      PlainUriE . fromString $ uri
-    _ ->
-      error
-      "Cannot refer to URI splices from the result of an URI splice"

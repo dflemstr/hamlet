@@ -1,129 +1,219 @@
-{-# LANGUAGE TemplateHaskell, GADTs, FlexibleInstances, StandaloneDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Text.Css.Runtime where
 
+import Data.String
 import Data.Text.Lazy.Builder (Builder)
 
-import Text.ParserCombinators.Parsec (parse)
-
 import Text.Css.Ast
-import qualified Text.Css.Parser as CssParser
+import Text.Css.Render
 
--- | Runtime representation of a Css expression,
--- parameterized by the expression type it represents.
-data CssExpr a where
-  StylesheetE
-    :: [CssExpr Statement] -> CssExpr Stylesheet
+newtype StylesheetR =
+  StylesheetE [StatementR]
+  deriving (Show)
 
-  ImportStatementE
-    :: CssExpr Uri -> Builder -> CssExpr Statement
-  MediaStatementE
-    :: Builder -> [CssExpr Ruleset] -> CssExpr Statement
-  PageStatementE
-    :: Builder -> [CssExpr Declaration] -> CssExpr Statement
-  RulesetStatementE
-    :: CssExpr Ruleset -> CssExpr Statement
-  AtRuleStatementE
-    :: Builder -> [CssExpr Declaration] -> CssExpr Statement
+data StatementR
+  = ImportStatementE UriR Builder
+  | MediaStatementE Builder [RulesetR]
+  | PageStatementE Builder [DeclarationR]
+  | RulesetStatementE RulesetR
+  | AtRuleStatementE Builder [DeclarationR]
+  deriving (Show)
 
-  RulesetE
-    :: [CssExpr Selector] -> [CssExpr Declaration] -> CssExpr Ruleset
-  MixinDefExtE
-    :: Builder -> [CssExpr MixinArgument]
-       -> [CssExpr Declaration] -> CssExpr Ruleset
-  VarDeclStatementExtE
-    :: Builder -> [CssExpr Term] -> CssExpr Ruleset
+data RulesetR
+  = RulesetE [SelectorR] [DeclarationR]
+  | MixinDefExtE SelectorR [MixinArgumentR] [DeclarationR]
+  | VarDeclStatementExtE Builder TermR
+  deriving (Show)
 
-  MixinArgumentE
-    :: Builder -> [CssExpr Value] -> CssExpr MixinArgument
+data MixinArgumentR
+  = MixinArgumentE Builder ValueR
+  deriving (Show)
 
-  PropertyDeclarationE
-    :: Builder -> CssExpr Expression -> Bool -> CssExpr Declaration
-  RulesetDeclarationExtE
-    :: CssExpr Ruleset -> CssExpr Declaration
-  MixinApplicationExtE
-    :: Builder -> CssExpr Declaration
+data DeclarationR
+  = PropertyDeclarationE Builder ExpressionR Bool
+  | RulesetDeclarationExtE RulesetR
+  | MixinApplicationExtE SelectorR [MixinArgumentR]
+  deriving (Show)
 
-  SelectorE
-    :: [ Either
-         Builder -- Prepend parent to this dynamic chunk
-         Builder -- Rendered non-dynamic chunk
-       ] -> CssExpr Selector
+data SelectorR
+  = SelectorE
+    [ Either
+      Builder -- Prepend parent to this dynamic chunk
+      Builder -- Rendered non-dynamic chunk
+    ]
+  deriving (Show)
 
-  ExpressionE
-    :: [Either (CssExpr Term) ExprOperator] -> CssExpr Expression
+data ExpressionR
+  = ExpressionE [Either (TermR) ExprOperator]
+  deriving (Show)
 
-  ValueTermE
-    :: CssExpr Value -> CssExpr Term
-  NegateTermE
-    :: CssExpr Term -> CssExpr Term
-  AbsTermE
-    :: CssExpr Term -> CssExpr Term
-  FunctionTermE
-    :: Builder -> CssExpr Expression -> CssExpr Term
-  ParensTermExtE
-    :: CssExpr Term -> CssExpr Term
-  AddTermExtE
-    :: CssExpr Term -> CssExpr Term -> CssExpr Term
-  SubTermExtE
-    :: CssExpr Term -> CssExpr Term -> CssExpr Term
-  MulTermExtE
-    :: CssExpr Term -> CssExpr Term -> CssExpr Term
-  DivTermExtE
-    :: CssExpr Term -> CssExpr Term -> CssExpr Term
+data TermR
+  = ValueTermE ValueR
+  | NegateTermE TermR
+  | AbsTermE TermR
+  | FunctionTermE Builder ExpressionR
+  | ParensTermExtE TermR
+  | AddTermExtE TermR TermR
+  | SubTermExtE TermR TermR
+  | MulTermExtE TermR TermR
+  | DivTermExtE TermR TermR
+  deriving (Show)
 
-  NumberValueE
-    :: Double -> CssExpr Value
-  PercentageValueE
-    :: Double -> CssExpr Value
-  UnitValueE
-    :: Unit -> Double -> CssExpr Value
-  DimensionValueE
-    :: Builder -> Double -> CssExpr Value
-  StringValueE
-    :: Builder -> CssExpr Value
-  IdentValueE
-    :: Builder -> CssExpr Value
-  UriValueE
-    :: CssExpr Uri -> CssExpr Value
-  HexcolorValueE
-    :: Color -> CssExpr Value
-  EscapedStringValueExtE
-    :: Builder -> CssExpr Value
-  VariableValueExtE
-    :: Variable -> CssExpr Value
+data ValueR
+  = NumberValueE Double
+  | PercentageValueE Double
+  | UnitValueE Unit Double
+  | DimensionValueE Builder Double
+  | StringValueE Builder
+  | IdentValueE Builder
+  | UriValueE UriR
+  | HexcolorValueE Color
+  | EscapedStringValueExtE Builder
+  | VariableValueExtE VariableR
+  deriving (Show)
 
-  PlainUriE
-    :: Builder -> CssExpr Uri
+newtype UriR
+  = PlainUriE Builder
+  deriving (Show)
 
-  PlainVariableE
-    :: Builder -> CssExpr Variable
-  VariableRefE
-    :: CssExpr Variable -> CssExpr Variable
+data VariableR
+  = PlainVariableE Builder
+  | VariableRefE VariableR
+  deriving (Show)
 
-deriving instance Show a => Show (CssExpr a)
+class IsRuntimeCss a where
+  renderRuntimeCss :: a -> Builder
 
-class CssValue a where
-  toCssValue :: a -> Value
+instance IsRuntimeCss StylesheetR where
+  renderRuntimeCss (StylesheetE smts) = concatMapB renderRuntimeCss smts
 
-instance CssValue [Char] where
-  toCssValue = parseValue
+instance IsRuntimeCss StatementR where
+  renderRuntimeCss (ImportStatementE url queries) =
+    "@import " <> renderRuntimeCss url <> queries <> ";"
+  renderRuntimeCss (MediaStatementE queries rules) =
+    "@media " <> queries <> "{" <> concatMapB renderRuntimeCss rules <> "}"
+  renderRuntimeCss (PageStatementE name decls) =
+    "@page " <> name <> "{" <> concatMapB renderRuntimeCss decls <>
+    "}"
+  renderRuntimeCss (RulesetStatementE rs) = renderRuntimeCss rs
+  renderRuntimeCss (AtRuleStatementE name decls) =
+    "@" <> name <> "{" <> concatMapB renderRuntimeCss decls <> "}"
 
-class CssUri a where
-  toCssUri :: a -> Uri
+instance IsRuntimeCss RulesetR where
+  renderRuntimeCss (RulesetE sels decls) =
+    (intercalateB "," . map renderRuntimeCss $ sels) <> "{" <>
+    concatMapB renderRuntimeCss decls <> "}"
+  renderRuntimeCss (MixinDefExtE sel args decls) =
+    renderRuntimeCss sel <> "(" <>
+    (intercalateB "," . map renderRuntimeCss $ args) <> "){" <>
+    concatMapB renderRuntimeCss decls <> "}"
+  renderRuntimeCss (VarDeclStatementExtE name term) =
+    "@" <> name <> ":" <> renderRuntimeCss term <> ";"
 
-instance CssUri [Char] where
-  toCssUri = parseUri
+instance IsRuntimeCss MixinArgumentR where
+  renderRuntimeCss (MixinArgumentE name value) =
+    name <> ":" <> renderRuntimeCss value
 
-parseValue :: String -> Value
-parseValue =
-  handleResult . parse CssParser.valueParser "value splice"
-  where
-    handleResult (Right v) = v
-    handleResult (Left err) = error . show $ err
+instance IsRuntimeCss DeclarationR where
+  renderRuntimeCss (PropertyDeclarationE name expr prio) =
+    name <> ":" <> renderRuntimeCss expr <>
+    (if prio then "!important" else "") <> ";"
+  renderRuntimeCss (RulesetDeclarationExtE rs) =
+    renderRuntimeCss rs
+  renderRuntimeCss (MixinApplicationExtE selector args) =
+    renderRuntimeCss selector <> "(" <>
+    (intercalateB "," . map renderRuntimeCss $ args) <> ";"
 
-parseUri :: String -> Uri
-parseUri =
-  handleResult . parse CssParser.uriParser "uri splice"
-  where
-    handleResult (Right u) = u
-    handleResult (Left err) = error . show $ err
+instance IsRuntimeCss SelectorR where
+  renderRuntimeCss (SelectorE chunks) =
+    concatMapB renderChunk chunks
+    where
+      renderChunk (Right chunk) = chunk
+      renderChunk (Left dynamic) = "&" <> dynamic
+
+instance IsRuntimeCss ExpressionR where
+  renderRuntimeCss (ExpressionE elems) =
+    concatMapB renderTermExpr elems
+    where
+      renderTermExpr (Left term) = renderRuntimeCss term
+      renderTermExpr (Right op) = renderCss op
+
+instance IsRuntimeCss TermR where
+  renderRuntimeCss (ValueTermE val) =
+    renderRuntimeCss val
+  renderRuntimeCss (NegateTermE term) =
+    "-" <> renderRuntimeCss term
+  renderRuntimeCss (AbsTermE term) =
+    "+" <> renderRuntimeCss term
+  renderRuntimeCss (FunctionTermE name expr) =
+    name <> "(" <> renderRuntimeCss expr <> ")"
+  renderRuntimeCss (ParensTermExtE term) =
+    "(" <> renderRuntimeCss term <> ")"
+  renderRuntimeCss (AddTermExtE t1 t2) =
+    renderRuntimeCss t1 <> "+" <> renderRuntimeCss t2
+  renderRuntimeCss (SubTermExtE t1 t2) =
+    renderRuntimeCss t1 <> "-" <> renderRuntimeCss t2
+  renderRuntimeCss (MulTermExtE t1 t2) =
+    renderRuntimeCss t1 <> "*" <> renderRuntimeCss t2
+  renderRuntimeCss (DivTermExtE t1 t2) =
+    renderRuntimeCss t1 <> "/" <> renderRuntimeCss t2
+
+instance IsRuntimeCss ValueR where
+  renderRuntimeCss (NumberValueE d) = renderDouble d
+  renderRuntimeCss (PercentageValueE d) = renderDouble d <> "%"
+  renderRuntimeCss (UnitValueE unit d) = renderDouble d <> renderCss unit
+  renderRuntimeCss (DimensionValueE dim d) = renderDouble d <> dim
+  renderRuntimeCss (StringValueE s) = "\"" <> s <> "\""
+  renderRuntimeCss (IdentValueE ident) = ident
+  renderRuntimeCss (UriValueE uri) = renderRuntimeCss uri
+  renderRuntimeCss (HexcolorValueE c) = renderCss c
+  renderRuntimeCss (EscapedStringValueExtE e) = e
+  renderRuntimeCss (VariableValueExtE v) = renderRuntimeCss v
+
+instance IsRuntimeCss UriR where
+  renderRuntimeCss (PlainUriE uri) =
+    "url(\"" <> uri <> "\")"
+
+instance IsRuntimeCss VariableR where
+  renderRuntimeCss (PlainVariableE name) =
+    "@" <> name
+  renderRuntimeCss (VariableRefE var) =
+    "@" <> renderRuntimeCss var
+
+liftValue :: Value -> ValueR
+liftValue v =
+  case v of
+    NumberValue d -> NumberValueE d
+    PercentageValue d -> PercentageValueE d
+    UnitValue u d -> UnitValueE u d
+    DimensionValue dim d ->
+      DimensionValueE (fromString dim) d
+    StringValue s ->
+      StringValueE . fromString $ s
+    IdentValue idf ->
+      IdentValueE . fromString $ idf
+    UriValue (PlainUri uri) ->
+      UriValueE . PlainUriE . fromString $ uri
+    UriValue _ ->
+      error "Cannot resolve URI splices at runtime"
+    HexcolorValue color -> HexcolorValueE color
+    EscapedStringValueExt esc ->
+      EscapedStringValueExtE . fromString $ esc
+    VariableValueExt var ->
+      VariableValueExtE . liftVariable $ var
+    SplicedValueExt _ ->
+      error "Cannot resolve value splices at runtime"
+
+liftUri :: Uri -> UriR
+liftUri u =
+  case u of
+    PlainUri uri ->
+      PlainUriE . fromString $ uri
+    _ ->
+      error "Cannot resolve URI splices at runtime"
+
+liftVariable :: Variable -> VariableR
+liftVariable v =
+  case v of
+    PlainVariable n -> PlainVariableE . fromString $ n
+    VariableRef r -> VariableRefE . liftVariable $ r

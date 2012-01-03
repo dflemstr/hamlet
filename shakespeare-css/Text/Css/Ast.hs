@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 -- | The abstract syntax tree for CSS-like stylesheets
 module Text.Css.Ast where
 
@@ -81,6 +82,7 @@ data Declaration =
   -- | Extension: An application of a previous mixin
   MixinApplicationExt -- TODO parser
   { mixinAppSelector :: Selector
+  , mixinAppArgs :: [Term]
   }
   deriving (Show)
 
@@ -114,7 +116,7 @@ data SimpleSelectorSpecifier
   | IDSelector String
   | PseudoClassSelector String (Maybe String)
   | PseudoElementSelector String (Maybe String)
-  | NotSelector SimpleSelector
+  | NotSelector Selector
   deriving (Show)
 
 -- | An operator for attribute selectors

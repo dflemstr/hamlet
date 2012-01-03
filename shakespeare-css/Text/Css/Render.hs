@@ -34,9 +34,9 @@ instance IsCss Statement where
     concatMapB renderCss decls <> "}"
 
 instance IsCss Ruleset where
-  renderCss (Ruleset sel decls) =
-    (unwordsB . map renderCss $ sel) <> "{" <>
-    (concatMapB renderCss $ decls) <> "}"
+  renderCss (Ruleset sels decls) =
+    (intercalateB "," . map renderCss $ sels) <> "{" <>
+    concatMapB renderCss decls <> "}"
   renderCss (MixinDefExt sel args decls) =
     renderCss sel <> "(" <> concatMapB renderCss args <>
     "){" <> concatMapB renderCss decls <> "}"
@@ -52,8 +52,9 @@ instance IsCss Declaration where
     str name <> ":" <> renderCss expr <>
     (if prio then "!important" else "") <> ";"
   renderCss (RulesetDeclarationExt rs) = renderCss rs
-  renderCss (MixinApplicationExt selector) =
-    renderCss selector <> ";"
+  renderCss (MixinApplicationExt selector args) =
+    renderCss selector <> "(" <>
+    (intercalateB "," . map renderCss $ args) <> ");"
 
 instance IsCss Selector where
   renderCss =
@@ -64,12 +65,12 @@ instance IsCss Selector where
 
 instance IsCss SimpleSelector where
   renderCss (SimpleSelector name specs) =
-    case name of
-      SelectorNothing -> ""
-      SelectorNsElem ns e -> str ns <> "|" <> str e
-      SelectorElem e -> str e
-      SelectorParentExt -> "&"
-    <> concatMapB renderCss specs
+    ( case name of
+         SelectorNothing -> ""
+         SelectorNsElem ns e -> str ns <> "|" <> str e
+         SelectorElem e -> str e
+         SelectorParentExt -> "&"
+    ) <> concatMapB renderCss specs
 
 instance IsCss SimpleSelectorSpecifier where
   renderCss (AttributeSelector ns name mOp) =
@@ -77,7 +78,7 @@ instance IsCss SimpleSelectorSpecifier where
     maybe "" renderOp mOp <> "]"
     where
       renderOp (operator, operand) =
-        renderCss operator <> renderString operand
+        renderCss operator <> "\"" <> renderString operand <> "\""
   renderCss (ClassSelector name) =
     "." <> str name
   renderCss (IDSelector name) =
@@ -137,7 +138,7 @@ instance IsCss Value where
   renderCss (PercentageValue d) = renderDouble d <> "%"
   renderCss (UnitValue unit d) = renderDouble d <> renderCss unit
   renderCss (DimensionValue dim d) = renderDouble d <> str dim
-  renderCss (StringValue s) = renderString s
+  renderCss (StringValue s) = "\"" <> renderString s <> "\""
   renderCss (IdentValue ident) = renderIdent ident
   renderCss (UriValue uri) = renderCss uri
   renderCss (HexcolorValue c) = renderCss c
@@ -146,7 +147,7 @@ instance IsCss Value where
   renderCss (SplicedValueExt _) = "?value splice?"
 
 instance IsCss Uri where
-  renderCss (PlainUri uri) = "url(" <> renderString uri <> ")"
+  renderCss (PlainUri uri) = "url(\"" <> renderString uri <> "\")"
   renderCss (SplicedUriExt _) = "?uri splice?"
   renderCss (SplicedUriParamExt _) = "?uri param splice?"
 
@@ -213,7 +214,7 @@ renderDouble d =
 
 renderString :: (IsString a, Monoid a) => String -> a
 renderString =
-  (<>"\"") . ("\""<>) . concatMapB addQuotes
+  concatMapB addQuotes
   where
     addQuotes '"' = str "\\\""
     addQuotes x = str [x]

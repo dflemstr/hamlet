@@ -367,7 +367,7 @@ negationParser =
   ( do
        notFuncSymToken
        sParser
-       arg <- simpleSelectorParser
+       arg <- selectorParser
        sParser
        closeParenToken
        return $ NotSelector arg

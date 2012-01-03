@@ -41,6 +41,7 @@ library
     other-modules:   Text.MkSizeType
                      Text.Css
                      Text.Css.Ast
+                     Text.Css.Convert
                      Text.Css.Macro
                      Text.Css.Parser
                      Text.Css.Render
