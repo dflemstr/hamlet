@@ -3,8 +3,7 @@ module Text.Css.Macro where
 
 import Prelude hiding (takeWhile)
 
-import Control.Applicative ((<$>), (*>), (<*))
-import Control.Monad (void)
+import Control.Applicative ((<$>), (*>), (<*), pure)
 
 import Data.Char
 
@@ -21,171 +20,138 @@ import Text.Css.Util
 -------------------------------------------------------------------------------}
 
 ident :: Parser String
-ident = optionalString "-" <+> nmstart <+> manyString nmchar <?> "identifier"
+ident = optionalString "-" <+> (pure <$> nmstart) <+> many nmchar
+        <?> "identifier"
 
 name :: Parser String
-name = many1String nmstart <?> "name"
+name = many1 nmstart <?> "name"
 
-nmstart :: Parser String
-nmstart =
-  satisfyInClass "_a-zA-Z" <|>
-  nonascii <|>
-  try escape <?> "start of a name"
+nmstart :: Parser Char
+nmstart = satisfyInClass "_a-zA-Z" <|> nonascii <|> escape
+          <?> "start of a name"
 
-nonascii :: Parser String
+nonascii :: Parser Char
 nonascii =
-  satisfyChar isNotAscii <?> "non-ASCII character"
+  satisfy isNotAscii <?> "non-ASCII character"
   where
     isNotAscii x = fromEnum x > 159
 
-unicode :: Parser String
-unicode =
-  ( do
-       void $ string "\\"
-       hexStr <- takeWhileBetween (inClass "0-9a-fA-F") 1 6
-       void $ option "" (try (string "\r\n") <|> satisfyInClass " \n\r\t\f")
-       let hexValue = head [x | (x, "") <- readHex hexStr]
-       return . return . toEnum $ (hexValue :: Int)
-  ) <?> "unicode escape sequence"
-
-escape :: Parser String
+escape :: Parser Char
 escape =
-  try unicode <|>
-  string "\\" *> satisfyNotInClass "\n\r\f0-9a-fA-F"
+  char '\\' *> escapeValue
+
+escapeValue :: Parser Char
+escapeValue =
+  ( ( satisfyNotInClass "\n\r\f0-9a-fA-F"
+      <?> "escaped char"
+    ) <|>
+    toUnicode <$>
+    ( ( takeWhileBetween (inClass "0-9a-fA-F") 1 6
+        <?> "hexadecimal Unicode code point"
+      ) <*
+      optional
+      ( (char '\r' <* optional (char '\n')) <|>
+        char '\n' <|> char '\t' <|> char '\f' <|> char ' '
+        <?> "white space after Unicode sequence"
+      )
+    )
+  )
   <?> "escape sequence"
 
-nmchar :: Parser String
+nmchar :: Parser Char
 nmchar =
-  satisfyInClass "_a-zA-Z0-9-" <|> nonascii <|> try escape <?>
-  "name character"
+  satisfyInClass "_a-zA-Z0-9-" <|> nonascii <|> escape
+  <?> "name character"
 
 num :: Parser Double
 num =
   toDouble <$>
-  (try (takeWhile isDigit <+> string "." <+> takeWhile1
-        isDigit) <|>
-   try (takeWhile1 isDigit))
+  ( try (takeWhile isDigit <+> string "." <+> takeWhile1 isDigit) <|>
+    (takeWhile1 isDigit)
+  )
   <?> "numeral"
 
 string' :: Parser String
-string' = try string1 <|> try string2 <?> "string"
+string' = string1 <|> string2 <?> "string"
 
 string1 :: Parser String
-string1 = string "\"" *> stringContents1 <* string "\""
+string1 =
+  char '"' *> many stringContent1 <*
+  (char '"' <|> fail "Unclosed double-quoted string literal")
+  <?> "double-quoted string"
 
 string2 :: Parser String
-string2 = string "'" *> stringContents2 <* string "'"
+string2 =
+  char '\'' *> many stringContent2 <*
+  (char '\'' <|> fail "Unclosed single-quoted string literal")
+  <?> "single-quoted string"
 
-badstring :: Parser String
-badstring = try badstring1 <|> try badstring2 <?> "bad string"
+stringContent1 :: Parser Char
+stringContent1 =
+  satisfyNotInClass "\n\r\f\\\"" <|>
+  char '\\' *> (nl *> stringContent1 <|> escapeValue)
+  <?> "string character in a double-quoted string"
 
-badstring1 :: Parser String
-badstring1 =
-  string "\"" *>
-  stringContents1 <+> optionalString "\\"
-
-badstring2 :: Parser String
-badstring2 =
-  string "'" *>
-  stringContents2 <+> optionalString "\\"
-
-stringContents1 :: Parser String
-stringContents1 =
-  manyString (satisfyNotInClass "\n\r\f\\\"" <|>
-              try (string "\\" >> nl >> return "") <|>
-              escape)
-
-stringContents2 :: Parser String
-stringContents2 =
-  manyString (satisfyNotInClass "\n\r\f\\'" <|>
-              try (string "\\" >> nl >> return "") <|>
-              escape)
+stringContent2 :: Parser Char
+stringContent2 =
+  satisfyNotInClass "\n\r\f\\'" <|>
+  char '\\' *> (nl *> stringContent2 <|> escapeValue)
+  <?> "string character in a single-quoted string"
 
 comment :: Parser String
 comment =
-  string "/*" *> takeWhile (/= '*') <+> takeWhile1 (== '*') <+>
-  manyString commentEndElem <* string "/" <?> "comment"
+  string "/*" *> many (noneOf "*") <+> many1 (char '*') <+>
+  manyString commentEndElem <*
+  (char '/' <|> fail "Unclosed comment: missing '/'")
+  <?> "comment"
   where
     commentEndElem =
-      satisfyNotInClass "/*" <+>
-      takeWhile (/= '*') <+>
-      (init <$> takeWhile1 (== '*'))
-
-badcomment :: Parser String
-badcomment = try badcomment1 <|> try badcomment2 <?> "bad comment"
-
-badcomment1 :: Parser String
-badcomment1 =
-  string "/*" <+> takeWhile (/= '*') <+> takeWhile1 (== '*')
-  <+> manyString brokenEndElem
-  where
-    brokenEndElem =
-      satisfyNotInClass "/*" <+> takeWhile (/= '*') <+> takeWhile1 (== '*')
-
-badcomment2 :: Parser String
-badcomment2 =
-  string "/*" <+> takeWhile (/= '*') <+> manyString brokenEndElem
-  where
-    brokenEndElem =
-      takeWhile1 (== '*') <+> satisfyNotInClass "/*" <+> takeWhile (/= '*')
+      pure <$> noneOf "/*" <+>
+      many (noneOf "*") <+>
+      ( init <$> takeWhile1 (== '*') <|>
+        fail "Unclosed comment: missing '*'"
+      )
 
 uri :: Parser String
 uri =
-  try (url *> w *> string' <* w <* string ")") <|>
-  try (url *> w *> manyString uriContentElem <* w <* string ")")
-  <?> "uri"
+  string' <|> many uriContentElem <?> "uri"
   where
     uriContentElem =
       satisfyInClass "!#$%&*-[]-~" <|> nonascii <|> escape
 
-url :: Parser ()
-url = string "url(" *> return ()
-
-baduri :: Parser String
-baduri = try baduri1 <|> try baduri2 <|> try baduri3 <?> "bad uri"
-
-baduri1 :: Parser String
-baduri1 =
-  string "url(" *> w *> manyString uriContentElem <* w
-  where
-    uriContentElem =
-      satisfyInClass "!#$%&*-~" <|> nonascii <|> escape
-
-baduri2 :: Parser String
-baduri2 = string "url(" *> w *> string' <* w
-
-baduri3 :: Parser String
-baduri3 = string "url(" *> w *> badstring
-
 nl :: Parser ()
-nl = void (string "\n" <|> try (string "\r\n") <|> string "\r" <|> string "\f")
-     <?> "newline"
+nl =
+  ((char '\r' <* optional (char '\n')) <|> char '\n' <|> char '\f') *> pure ()
+  <?> "newline"
 
 w :: Parser ()
-w = (takeWhile $ inClass " \t\r\n\f") *> return () <?> "w"
+w = (takeWhile $ inClass " \t\r\n\f") *> pure () <?> "whitespace"
 
 -- | Creates specialized matchers for a single character
-mkCharP :: Char -> Parser String
+mkCharP :: Char -> Parser Char
 mkCharP c =
-  (if c > 'e' then (<|> string ('\\' : cString)) else id)
-  ( string cString <|>
-    string cUpperString <|>
-    try hexSequence
-  ) *> return cString <?> "'" ++ cString ++ "'-like character"
+  try
+  ( ( char c <|>
+      char (toUpper c) <|>
+      char '\\' *> escaped
+    ) *> pure c
+  ) <?> ('\'' : c : "'-like character")
   where
-    cString = [c]
-    cUpper = toUpper c
-    cUpperString = [cUpper]
-    capsHex = showHex (fromEnum cUpper) ""
-    smallHex = showHex (fromEnum c) ""
+    escaped =
+      if c > 'f'
+      then char c <|> char (toUpper c) <|> hexSequence *> pure c
+      else hexSequence *> pure c
+    hexStr = showHex (fromEnum c) ""
+    upperHexStr = (showHex . fromEnum . toUpper $ c) ""
     hexSequence =
-      string "\\" <+> takeWhileBetween (== '0') 0 4 <+>
-      (try (string smallHex) <|> string capsHex) <+>
-      option "" (try (string "\r\n") <|> satisfyInClass " \t\r\n\f")
+      takeWhileBetween (== '0') 0 4 *>
+      (permuteStr hexStr <|> permuteStr upperHexStr) *>
+      optional (char '\r' <* optional (char '\n') <|>
+                satisfyInClass " \t\n\f")
 
 -- These letters are used in case-insensitive CSS keywords
-lA, lC, lD, lE, lG, lH, lI, lK, lL, lM :: Parser String
-lN, lO, lP, lR, lS, lT, lU, lX, lY, lZ :: Parser String
+lA, lC, lD, lE, lG, lH, lI, lK, lL, lM :: Parser Char
+lN, lO, lP, lR, lS, lT, lU, lX, lY, lZ :: Parser Char
 
 lA = mkCharP 'a'
 lC = mkCharP 'c'
@@ -217,3 +183,9 @@ toDouble =
     fixToken ""          = "0"
     fixToken t @ ('.':_) = '0' : t
     fixToken t           = t
+
+-- | Parses an Unicode hex sequence
+toUnicode :: String -> Char
+toUnicode str =
+  let hexValue = head [x | (x, "") <- readHex str]
+  in toEnum (hexValue :: Int)

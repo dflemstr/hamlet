@@ -4,144 +4,28 @@ module Text.Css.Token where
 
 import Prelude hiding (takeWhile)
 
-import Control.Applicative ((<*), (*>))
+import Control.Applicative ((*>), pure)
 
 import Text.ParserCombinators.Parsec
 
 import Text.Css.Macro
 import Text.Css.Util
 
+--------------------------------------------------------------------------------
+-- Dynamic tokens
+--------------------------------------------------------------------------------
+
 identToken :: Parser String
 identToken = ident <?> "ident"
-
-atkeywordToken :: Parser String
-atkeywordToken = char '@' *> ident <?> "atkeyword"
 
 stringToken :: Parser String
 stringToken = string' <?> "string"
 
-badStringToken :: Parser String
-badStringToken = badstring <?> "bad string"
-
-badUriToken :: Parser String
-badUriToken = baduri <?> "bad uri"
-
-badCommentToken :: Parser String
-badCommentToken = badcomment <?> "bad comment"
-
-hashToken :: Parser String
-hashToken = char '#' *> name <?> "hash"
+hashToken :: Parser ()
+hashToken = char '#' `disregardWith` "hash"
 
 numberToken :: Parser Double
 numberToken = num <?> "number"
-
-percentageToken :: Parser Double
-percentageToken = num <* char '%' <?> "percentage"
-
-importSymToken :: Parser ()
-importSymToken =
-  char '@' *> lI *> lM *> lP *> lO *> lR *> lT *> return ()
-  <?> "@import symbol"
-
-pageSymToken :: Parser ()
-pageSymToken =
-  char '@' *> lP *> lA *> lG *> lE *> return ()
-  <?> "@page symbol"
-
-mediaSymToken :: Parser ()
-mediaSymToken =
-  char '@' *> lM *> lE *> lD *> lI *> lA *> return ()
-  <?> "@media symbol"
-
-charsetSymToken :: Parser ()
-charsetSymToken =
-  string "@charset " *> return ()
-  <?> "@charset symbol"
-
-importantSymToken :: Parser ()
-importantSymToken =
-  char '!' *> skipMany (try w <|> commentToken) *>
-  lI *> lM *> lP *> lO *> lR *> lT *> lA *> lN *> lT *>
-  return () <?> "!important symbol"
-
-notFuncSymToken :: Parser ()
-notFuncSymToken =
-  char ':' *> lN *> lO *> lT *> char '(' *> return ()
-  <?> ":not( symbol"
-
-functionContentToken :: Parser String
-functionContentToken = takeWhile (/= ')') <?> "function content"
-
-queryContentToken :: Parser String
-queryContentToken =
-  many (noneOf "{,;") <?> "query content"
-
-emsToken :: Parser Double
-emsToken = try (num <* lE <* lM) <?> "ems"
-
-exsToken :: Parser Double
-exsToken = try (num <* lE <* lX) <?> "exs"
-
-lengthToken :: Parser (String, Double)
-lengthToken =
-  try
-  ( do
-       n <- num
-       d <- try (lP <+> lX) <|>
-            try (lC <+> lM) <|>
-            try (lM <+> lM) <|>
-            try (lI <+> lN) <|>
-            try (lP <+> lT) <|>
-            lP <+> lC
-       return (d, n)
-  ) <?> "length"
-
-angleToken :: Parser (String, Double)
-angleToken =
-  try
-  ( do
-       n <- num
-       d <- try (lD <+> lE <+> lG) <|>
-            try (lR <+> lA <+> lD) <|>
-            try (lG <+> lR <+> lA <+> lD) <|>
-            lT <+> lU <+> lR <+> lN <+> lS
-       return (d, n)
-  ) <?> "angle"
-
-timeToken :: Parser (String, Double)
-timeToken =
-  try
-  ( do
-       n <- num
-       d <- try (lM <+> lS) <|>
-            lS
-       return (d, n)
-  ) <?> "time"
-
-freqToken :: Parser (String, Double)
-freqToken =
-  try
-  ( do
-       n <- num
-       d <- try (lH <+> lZ) <|>
-            lK <+> lH <+> lZ
-       return (d, n)
-  ) <?> "freq"
-
-dimensionToken :: Parser (String, Double)
-dimensionToken =
-  try
-  ( do
-       n <- num
-       d <- ident
-       return (d, n)
-  ) <?> "dimension"
-
-uriToken :: Parser String
-uriToken = uri <?> "uri"
-
-urlSymToken :: Parser ()
-urlSymToken = url
 
 unicodeRangeToken :: Parser String
 unicodeRangeToken =
@@ -149,104 +33,195 @@ unicodeRangeToken =
   option "" (string "-" <+> takeWhileBetween (inClass "0-9a-fA-F") 1 6)
   <?> "unicode range"
 
+functionToken :: Parser String
+functionToken = ident <?> "function"
+
 colorToken :: Parser String
-colorToken =
-  char '#' *> takeWhileBetween (inClass "0-9a-fA-F") 3 6
-  <?> "color"
+colorToken = takeWhileBetween (inClass "0-9a-fA-F") 3 6 <?> "color"
 
-cdoToken :: Parser ()
-cdoToken = try (string "<!--") *> return () <?> "cdo"
+uriToken :: Parser String
+uriToken = uri <?> "uri"
 
-cdcToken :: Parser ()
-cdcToken = try (string "-->") *> return () <?> "cdc"
+functionContentToken :: Parser String
+functionContentToken = takeWhile (/= ')') <?> "function content"
+
+queryContentToken :: Parser String
+queryContentToken =
+  many1 (noneOf "{,;") <?> "query content"
+
+commentToken :: Parser ()
+commentToken = comment `disregardWith` "comment"
+
+spaceToken :: Parser ()
+spaceToken = takeWhile1 (inClass " \t\r\n\f") `disregardWith` "whitespace"
+
+--------------------------------------------------------------------------------
+-- Constant symbol tokens
+--------------------------------------------------------------------------------
+
+importantSymToken :: Parser ()
+importantSymToken =
+  ( char '!' *> skipMany (w <|> commentToken) *>
+    lI *> lM *> lP *> lO *> lR *> lT *> lA *> lN *> lT)
+  `disregardWith` "!important"
+
+charsetSymToken :: Parser ()
+charsetSymToken =
+  string "charset " *> pure ()
+
+prefixmatchSymToken :: Parser ()
+prefixmatchSymToken = string "^=" `disregardWith` "prefix match operator"
+
+suffixmatchSymToken :: Parser ()
+suffixmatchSymToken = string "$=" `disregardWith` "suffix match operator"
+
+substringmatchSymToken :: Parser ()
+substringmatchSymToken = string "*=" `disregardWith` "substring match operator"
+
+includesSymToken :: Parser ()
+includesSymToken = string "~=" `disregardWith` "includes operator"
+
+dashmatchSymToken :: Parser ()
+dashmatchSymToken = string "|=" `disregardWith` "dash match operator"
+
+cdoSymToken :: Parser ()
+cdoSymToken = string "<!--" `disregardWith` "cdo"
+
+cdcSymToken :: Parser ()
+cdcSymToken = string "-->" `disregardWith` "cdc"
+
+importSymToken :: Parser ()
+importSymToken = (lI *> lM *> lP *> lO *> lR *> lT) `disregardWith` "import"
+
+pageSymToken :: Parser ()
+pageSymToken = (lP *> lA *> lG *> lE) `disregardWith` "page"
+
+mediaSymToken :: Parser ()
+mediaSymToken = (lM *> lE *> lD *> lI *> lA) `disregardWith` "media"
+
+notFuncSymToken :: Parser ()
+notFuncSymToken = (lN *> lO *> lT) `disregardWith` "not"
+
+emSymToken :: Parser ()
+emSymToken = (lE *> lM) `disregardWith` "em"
+
+exSymToken :: Parser ()
+exSymToken = (lE *> lX) `disregardWith` "ex"
+
+pxSymToken :: Parser ()
+pxSymToken = (lP *> lX) `disregardWith` "px"
+
+cmSymToken :: Parser ()
+cmSymToken = (lC *> lM) `disregardWith` "cm"
+
+mmSymToken :: Parser ()
+mmSymToken = (lM *> lM) `disregardWith` "mm"
+
+inSymToken :: Parser ()
+inSymToken = (lI *> lN) `disregardWith` "in"
+
+ptSymToken :: Parser ()
+ptSymToken = (lP *> lT) `disregardWith` "pt"
+
+pcSymToken :: Parser ()
+pcSymToken = (lP *> lC) `disregardWith` "pc"
+
+degSymToken :: Parser ()
+degSymToken = (lD *> lE *> lG) `disregardWith` "deg"
+
+radSymToken :: Parser ()
+radSymToken = (lR *> lA *> lD) `disregardWith` "rad"
+
+gradSymToken :: Parser ()
+gradSymToken = (lG *> lR *> lA *> lD) `disregardWith` "grad"
+
+turnsSymToken :: Parser ()
+turnsSymToken = (lT *> lU *> lR *> lN *> lS) `disregardWith` "turns"
+
+msSymToken :: Parser ()
+msSymToken = (lM *> lS) `disregardWith` "ms"
+
+sSymToken :: Parser ()
+sSymToken = lS `disregardWith` "s"
+
+hzSymToken :: Parser ()
+hzSymToken = (lH *> lZ) `disregardWith` "hz"
+
+khzSymToken :: Parser ()
+khzSymToken = (lK *> lH *> lZ) `disregardWith` "khz"
+
+urlSymToken :: Parser ()
+urlSymToken = (lU *> lR *> lL) `disregardWith` "url"
+
+--------------------------------------------------------------------------------
+-- Single character tokens
+--------------------------------------------------------------------------------
 
 colonToken :: Parser ()
-colonToken = char ':' *> return () <?> "colon"
+colonToken = char ':' `disregardWith` "colon"
 
 semicolonToken :: Parser ()
-semicolonToken = char ';' *> return () <?> "semicolon"
+semicolonToken = char ';' `disregardWith` "semicolon"
 
 commaToken :: Parser ()
-commaToken = char ',' *> return () <?> "comma"
+commaToken = char ',' `disregardWith` "comma"
 
 slashToken :: Parser ()
-slashToken = char '/' *> return () <?> "slash"
+slashToken = char '/' `disregardWith` "slash"
 
 greaterToken :: Parser ()
-greaterToken = char '>' *> return () <?> "greater than"
+greaterToken = char '>' `disregardWith` "greater than"
 
 plusToken :: Parser ()
-plusToken = char '+' *> return () <?> "plus"
+plusToken = char '+' `disregardWith` "plus"
 
 tildeToken :: Parser ()
-tildeToken = char '~' *> return () <?> "tilde"
+tildeToken = char '~' `disregardWith` "tilde"
 
 minusToken :: Parser ()
-minusToken = char '-' *> return () <?> "minus"
+minusToken = char '-' `disregardWith` "minus"
 
 ampersandToken :: Parser ()
-ampersandToken = char '&' *> return () <?> "ampersand"
+ampersandToken = char '&' `disregardWith` "ampersand"
 
 starToken :: Parser ()
-starToken = char '*' *> return () <?> "star"
+starToken = char '*' `disregardWith` "star"
 
 starStringToken :: Parser String
 starStringToken = string "*" <?> "star"
 
 periodToken :: Parser ()
-periodToken = char '.' *> return () <?> "period"
+periodToken = char '.' `disregardWith` "period"
 
 pipeToken :: Parser ()
-pipeToken = char '|' *> return () <?> "pipe"
+pipeToken = char '|' `disregardWith` "pipe"
 
 equalsToken :: Parser ()
-equalsToken = char '=' *> return () <?> "equals"
+equalsToken = char '=' `disregardWith` "equals"
 
 hashSymbolToken :: Parser ()
-hashSymbolToken = char '#' *> return () <?> "hash"
+hashSymbolToken = char '#' `disregardWith` "hash"
 
 atToken :: Parser ()
-atToken = char '@' *> return () <?> "at"
+atToken = char '@' `disregardWith` "at"
+
+percentageToken :: Parser ()
+percentageToken = char '%' `disregardWith` "percentage"
 
 openBraceToken :: Parser ()
-openBraceToken = char '{' *> return () <?> "open brace"
+openBraceToken = char '{' `disregardWith` "open brace"
 
 closeBraceToken :: Parser ()
-closeBraceToken = char '}' *> return () <?> "close brace"
+closeBraceToken = char '}' `disregardWith` "close brace"
 
 openParenToken :: Parser ()
-openParenToken = char '(' *> return () <?> "open paren"
+openParenToken = char '(' `disregardWith` "open paren"
 
 closeParenToken :: Parser ()
-closeParenToken = char ')' *> return () <?> "close paren"
+closeParenToken = char ')' `disregardWith` "close paren"
 
 openBracketToken :: Parser ()
-openBracketToken = char '[' *> return () <?> "open bracket"
+openBracketToken = char '[' `disregardWith` "open bracket"
 
 closeBracketToken :: Parser ()
-closeBracketToken = char ']' *> return () <?> "close bracket"
-
-spaceToken :: Parser ()
-spaceToken = try (takeWhile1 $ inClass " \t\r\n\f") *> return () <?> "space"
-
-commentToken :: Parser ()
-commentToken = try comment *> return () <?> "comment"
-
-functionToken :: Parser String
-functionToken = try (ident <* char '(') <?> "function"
-
-prefixmatchToken :: Parser ()
-prefixmatchToken = try (string "^=") *> return () <?> "prefix match operator"
-
-suffixmatchToken :: Parser ()
-suffixmatchToken = try (string "$=") *> return () <?> "suffix match operator"
-
-substringmatchToken :: Parser ()
-substringmatchToken =
-  try (string "*=") *> return () <?> "substring match operator"
-
-includesToken :: Parser ()
-includesToken = try (string "~=") *> return () <?> "includes operator"
-
-dashmatchToken :: Parser ()
-dashmatchToken = try (string "|=") *> return () <?> "dash match operator"
+closeBracketToken = char ']' `disregardWith` "close bracket"
