@@ -39,16 +39,16 @@ library
     exposed-modules: Text.Cassius
                      Text.Lucius
     other-modules:   Text.MkSizeType
+                     Text.Citerius.Parser
+                     Text.Citerius.Quasi
                      Text.Css
                      Text.Css.Ast
                      Text.Css.Convert
                      Text.Css.Macro
-                     Text.Css.Parser
                      Text.Css.Render
                      Text.Css.Runtime
                      Text.Css.Token
                      Text.Css.Util
-                     Text.Css.Quasi
     ghc-options:     -Wall -fno-warn-orphans
 
 test-suite test

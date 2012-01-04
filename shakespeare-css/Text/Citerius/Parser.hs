@@ -1,4 +1,6 @@
--- | CSS parsers for CSS level 2.0, 2.1 and 3.0. These parsers are
+-- | CSS parsers for CSS level 2.0, 2.1 and 3.0 with extensions.
+--
+-- These parsers are
 -- *NOT* forwards-compatible, since they need access to expression
 -- tokens directly -- conforming to the forwards-compatible CSS
 -- standard would make variable interpolation etc. impractical.
@@ -8,7 +10,7 @@
 --
 -- *TODO*: There might be issues with comments not being parseable in
 -- some obscure locations
-module Text.Css.Parser where
+module Text.Citerius.Parser where
 
 import Control.Applicative ((<*>), (<$>), (*>), (<*), pure)
 
@@ -22,7 +24,7 @@ import Text.Css.Ast
 import Text.Css.Token
 import Text.Css.Util
 
--- | A complete CSS stylesheet
+-- | A complete Citerius stylesheet
 stylesheetParser :: Parser Stylesheet
 stylesheetParser =
   ( do

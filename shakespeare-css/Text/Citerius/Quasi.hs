@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
-module Text.Css.Quasi where
+module Text.Citerius.Quasi where
 
 import Data.List
 import qualified Data.Text.Lazy.Builder as Builder
@@ -12,9 +12,9 @@ import Text.Shakespeare.Base
 
 import Text.ParserCombinators.Parsec (parse)
 
+import Text.Citerius.Parser
 import Text.Css.Ast
 import Text.Css.Convert
-import Text.Css.Parser
 import Text.Css.Render
 import Text.Css.Runtime
 
@@ -31,6 +31,14 @@ citeriusFromString :: String -> Q Exp
 citeriusFromString =
   either (error . show) runSpliceResolver .
   parse stylesheetParser "quasiquote"
+
+parseValue :: String -> Value
+parseValue =
+  either (error . show) id .  parse valueParser "value string"
+
+parseUri :: String -> Uri
+parseUri =
+  either (error . show) id . parse uriParser "uri string"
 
 runSpliceResolver :: Spliced a => a -> Q Exp
 runSpliceResolver a = do
