@@ -127,7 +127,7 @@ operatorParser :: Parser ExprOperator
 operatorParser =
   ( slashToken *> pure SplitExprOperator <|>
     commaToken *> pure SeqExprOperator <|>
-    return SpaceExprOperator
+    spaceToken *> return SpaceExprOperator
   ) <* sParser
   <?> "operator"
 
@@ -159,7 +159,7 @@ declarationsParser :: Parser [Maybe Declaration]
 declarationsParser =
   between openBraceToken closeBraceToken $ do
     sParser
-    optionMaybe declarationParser `sepEndBy` (semicolonToken *> sParser)
+    (optionMaybe declarationParser) `sepEndBy` (semicolonToken *> sParser)
 
 -- | A selector (not a selector sequence; does not parse ',')
 selectorParser :: Parser Selector
@@ -182,7 +182,9 @@ simpleSelectorParser = flip label "simple selector" $ do
       (Nothing, Just (Just e)) -> return $ SelectorElem e
       (Nothing, Just Nothing)  -> return $ SelectorParentExt
       (Nothing, Nothing)       -> return $ SelectorNothing
-      (_      , _)             ->
+      (Just _,  Nothing)       ->
+        fail "Cannot have namespace without identifier"
+      (Just _,  Just Nothing)  ->
         fail "Parent selectors cannot have namespaces"
   return $ SimpleSelector name specifiers
 
@@ -202,9 +204,9 @@ attribParser = flip label "attribute specifier" $ do
   between openBracketToken closeBracketToken $ do
     sParser
     (namespace, name) <-
-      (,)
-      <$> (Just <$> try namespacePrefixParser <|> pure Nothing)
-      <*> identToken
+      try
+      ((,) <$> (Just <$> namespacePrefixParser) <*> identToken) <|>
+      ((,) <$> pure Nothing <*> identToken)
     sParser
     operation <- optionMaybe $ do
       operator <-
@@ -259,8 +261,10 @@ pseudoParser = flip label "pseudo class or element" $ do
 -- | Any expression like '1px solid red'
 expressionParser :: Parser Expression
 expressionParser =
-  Expression <$> retSepBy1 termExprParser operatorParser
-  <?> "expression"
+  Expression <$>
+  ( try (retSepBy1 termParser operatorParser) <|>
+    (return . Left) <$> termExprParser
+  ) <* sParser <?> "expression"
 
 -- | Operator description for extended expressions
 -- TODO investigate what else should be added
@@ -282,7 +286,10 @@ termTable =
 
 -- | A term that includes infix operators
 termExprParser :: Parser Term
-termExprParser = buildExpressionParser termTable termParser
+termExprParser =
+  buildExpressionParser
+  termTable
+  (termParser <* many (spaceToken <|> try commentToken))
 
 -- | A term like '1px', 'solid', 'red', '(3 + 4)'
 -- 'desaturate(@color, 30% * 0.3)'. Some extension terms might need to be
@@ -292,6 +299,8 @@ termParser =
   ( ParensTermExt <$>
     between openParenToken closeParenToken termExprParser
   ) <|>
+  AbsTerm <$> (plusToken *> termParser) <|>
+  NegateTerm <$> (minusToken *> termParser) <|>
   try functionParser <|>
   ValueTerm <$> valueParser
 
@@ -386,7 +395,6 @@ functionParser = flip label "function" $ do
   expr <- between openParenToken closeParenToken $ do
     sParser
     expressionParser
-  sParser
   return $ FunctionTerm name expr
 
 -- | A hexadecimal color à la '#abc' or '#abcdef'

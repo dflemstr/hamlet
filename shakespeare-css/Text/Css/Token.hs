@@ -16,7 +16,7 @@ import Text.Css.Util
 --------------------------------------------------------------------------------
 
 identToken :: Parser String
-identToken = ident <?> "ident"
+identToken = ident <?> "identifier"
 
 stringToken :: Parser String
 stringToken = string' <?> "string"
@@ -53,7 +53,7 @@ commentToken :: Parser ()
 commentToken = comment `disregardWith` "comment"
 
 spaceToken :: Parser ()
-spaceToken = takeWhile1 (inClass " \t\r\n\f") `disregardWith` "whitespace"
+spaceToken = many1 (oneOf " \t\r\n\f") `disregardWith` "whitespace"
 
 --------------------------------------------------------------------------------
 -- Constant symbol tokens
